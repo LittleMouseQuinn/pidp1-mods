@@ -1,6 +1,12 @@
 #ifndef DCS2DEFS_AH
 #define DCS2DEFS_AH
 
+#ifdef SIMH_COMPAT
+
+#include <DCS/simhdcsdefs.ah>
+
+#else
+
 // Defines for the DCS2 system.
 // See the documentation.
 // NOTE that rcr in DCS conflicts with rcr, rotate-combined-right.
@@ -136,5 +142,7 @@
 #define flxnl 077
 // ascnch is used by rxl
 #define ascnch 077
+
+#endif
 
 #endif

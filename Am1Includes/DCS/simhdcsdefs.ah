@@ -1,0 +1,118 @@
+#ifndef SIMHDCSDEFS_AH
+#define SIMHDCSDEFS_AH
+
+// Compatibility definitions for programs written against DCS2 but built
+// for the stock SIMH PDP-1 Type 630 DCS implementation.
+//
+// Stock SIMH provides the original DCS character IOTs and a TMXR-backed
+// network listener, but it does not provide DCS2's guest-side socket-control
+// extensions.  The simulator console owns listener setup instead.
+//
+// The stock Type 630 model also uses the same scanner flag for receive-ready
+// and transmit-complete.  TCB is therefore serialized here: after sending a
+// byte, wait for the DCS scanner flag and consume the completion with RCC.
+
+#define rch iot 0022
+#define rrc iot 0122
+// DCS RCC conflicts with AM1's rotate-combined-right mnemonic, so keep the
+// DCS2 header's established rchr spelling.
+#define rchr iot 1022
+#define rsc iot 1122
+#define tcc iot 5022
+
+// RCH/RCC clear IO when this pulse bit is added.
+#define rchclr 002000
+
+// IOS_DCS in stock SIMH is bit 1 of the IO status word.
+#define SIMH_DCS_READY 000002
+
+// Adventure waits for a DCS2 connection-status bit before SSB.  Stock SIMH
+// has no guest-visible TCP connection bit, so its compatibility path uses the
+// first received byte as the session-start event.  SSB selects send line 0,
+// then RCC consumes that event before the first output byte is transmitted.
+#define ssb iot 4122; rchr
+
+// Serialize transmit completion.  RSC alone is not sufficient because it
+// unlocks the scanner without clearing the line flag; RCC clears the flag and
+// unlocks the scanner in one operation.
+#define tcb iot 4022; cli; cks; lai; and [SIMH_DCS_READY]; sza i; jmp .-5; cli; rchr
+
+// DCS2 extended guest-side socket operations have no stock-SIMH equivalent.
+// ATTACH DCS on the simulator console owns the listener.
+#define scb nop
+#define rle nop
+#define rpc nop
+#define rci nop
+#define ric nop
+#define rcs cks
+#define rwe nop
+#define roc nop
+#define res nop
+#define rxl nop
+
+// Channel request flags are consumed only by SCB.  SCB is a no-op in this
+// mode, so these collapse to zero while retaining source compatibility.
+#define dcftel 000000
+#define dcfflex 000000
+#define dcfecho 000000
+#define dcfioc 000000
+#define dcfioe 000000
+#define dcfior 000000
+#define dcfie 000000
+#define dcfsrv 000000
+#define rxlfta 000000
+#define rxlucs 000000
+#define rxlchg 000000
+#define dcmsbs 000000
+#define dcmcha 000000
+
+#define scbset 000000
+#define scbbnd 000000
+#define scbrst 000000
+#define scbclr 000000
+
+// Adventure uses dsfopn only to decide whether to issue SCB and dsfcon to
+// wait for a client.  The stock-SIMH listener already exists, so dsfopn is
+// always false.  A received character raises IOS_DCS and serves as the
+// connection/session-start indication.  The compatibility SSB above consumes
+// that first character before output starts.
+#define dsfopn 000000
+#define dsfsvr 000000
+#define dsfcon SIMH_DCS_READY
+#define dsfful 000000
+#define dsfrdy SIMH_DCS_READY
+#define dsfser 000000
+#define dsfcls 000000
+#define dsfien 000000
+#define dsfior 000000
+#define dsfioc 000000
+#define dsfioe 000000
+#define dsfcur 000000
+
+#define dssrdy dsfcon
+#define dsserr 000000
+
+// Keep the DCS2 error symbols available to source that includes dcs2defs.ah.
+// The stock-SIMH compatibility path does not synthesize these error returns.
+#define dserr 400000
+#define dseno 1
+#define dseoe 2
+#define dseic 3
+#define dsens 4
+#define dseil 5
+#define dseso 6
+#define dsebi 7
+#define dsecc 10
+#define dselo 11
+#define dseep 12
+#define dsenc 13
+
+#define dcfcks 000200
+
+#define flxerr 076
+#define flxnch 013
+#define flxetx 013
+#define flxnl 077
+#define ascnch 077
+
+#endif
