@@ -50,7 +50,7 @@ jobs:
           test -x .ci-simh/BIN/pdp1
           .ci-simh/BIN/pdp1 -v
 
-      - name: Boot Adventure on stock SIMH and verify DCS greeting
+      - name: Play Adventure on stock SIMH through DCS
         run: |
           cat > /tmp/adventure-simh.ini <<EOF
           set cpu pdp1d48
@@ -66,7 +66,7 @@ jobs:
           boot ptr
           EOF
 
-          timeout 45s .ci-simh/BIN/pdp1 /tmp/adventure-simh.ini > /tmp/adventure-simh.log 2>&1 &
+          timeout 60s .ci-simh/BIN/pdp1 /tmp/adventure-simh.ini > /tmp/adventure-simh.log 2>&1 &
           SIMH_PID=$!
           trap 'kill "$SIMH_PID" 2>/dev/null || true' EXIT
 
@@ -74,42 +74,64 @@ jobs:
           import socket
           import time
 
-          deadline = time.time() + 20
-          sock = None
-          last_error = None
-          while time.time() < deadline:
-              try:
-                  sock = socket.create_connection(("127.0.0.1", 20301), timeout=1)
-                  break
-              except OSError as exc:
-                  last_error = exc
-                  time.sleep(0.2)
-          if sock is None:
+          def connect(port, timeout=20):
+              deadline = time.time() + timeout
+              last_error = None
+              while time.time() < deadline:
+                  try:
+                      return socket.create_connection(("127.0.0.1", port), timeout=1)
+                  except OSError as exc:
+                      last_error = exc
+                      time.sleep(0.2)
               raise SystemExit(f"DCS listener did not open: {last_error}")
 
-          with sock:
-              sock.settimeout(0.5)
-              # Stock SIMH has no guest-visible connection-status bit.  The
-              # SIMH_COMPAT shim intentionally uses the first received byte as
-              # the session-start signal; Adventure's first TCB consumes it.
-              sock.sendall(b"\r")
-              data = bytearray()
-              deadline = time.time() + 20
+          def receive_until(sock, transcript, needle, timeout=20):
+              deadline = time.time() + timeout
+              target = needle.encode("ascii")
               while time.time() < deadline:
+                  if target in transcript:
+                      return
                   try:
                       chunk = sock.recv(4096)
                   except socket.timeout:
                       continue
                   if not chunk:
                       break
-                  data.extend(chunk)
-                  if b"WELCOME TO ADVENTURE ON THE PDP-1!" in data:
-                      break
+                  transcript.extend(chunk)
+              text = bytes(transcript).decode("ascii", errors="replace")
+              raise SystemExit(f"Did not receive expected text {needle!r}. Transcript:\n{text}")
 
-              text = bytes(data).decode("ascii", errors="replace")
+          sock = connect(20301)
+          with sock:
+              sock.settimeout(0.5)
+              transcript = bytearray()
+
+              # Stock SIMH exposes character-ready, but no guest-visible TCP
+              # connection-status bit. The compatibility path therefore uses
+              # the first received byte purely as a session-start event.
+              sock.sendall(b"\r")
+              receive_until(sock, transcript, "WOULD YOU LIKE INSTRUCTIONS?")
+
+              # Exercise the receive path and enter the real game.
+              sock.sendall(b"NO\r")
+              receive_until(sock, transcript, "YOU ARE STANDING AT THE END OF A ROAD BEFORE A SMALL BRICK BUILDING.")
+
+              # Exercise another complete command/response cycle so this is
+              # more than a banner test.
+              sock.sendall(b"INVENTORY\r")
+              receive_until(sock, transcript, "YOU ARE EMPTY-HANDED.")
+
+              text = bytes(transcript).decode("ascii", errors="replace")
               print(text)
-              if "WELCOME TO ADVENTURE ON THE PDP-1!" not in text:
-                  raise SystemExit("Adventure greeting was not received through stock SIMH DCS")
+
+              for expected in (
+                  "WELCOME TO ADVENTURE ON THE PDP-1!",
+                  "WOULD YOU LIKE INSTRUCTIONS?",
+                  "YOU ARE STANDING AT THE END OF A ROAD BEFORE A SMALL BRICK BUILDING.",
+                  "YOU ARE EMPTY-HANDED.",
+              ):
+                  if expected not in text:
+                      raise SystemExit(f"Missing expected Adventure text: {expected}")
           PY
 
           echo "--- stock SIMH console log ---"
