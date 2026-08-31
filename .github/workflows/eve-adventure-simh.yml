@@ -10,8 +10,10 @@ jobs:
   build-adventure-simh:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out fork
+      - name: Check out clean contribution branch
         uses: actions/checkout@v4
+        with:
+          ref: adventure-stock-simh
 
       - name: Install build dependencies
         run: |
@@ -21,27 +23,12 @@ jobs:
       - name: Build AM1 assembler only
         run: make -C Tools/AM1 am1
 
-      - name: Build Adventure data tools
-        run: |
-          make -C FunStuff/Adventure/AdvDataLoader
-          make -C FunStuff/Adventure/AdvDataLoader install
-
-      - name: Generate Adventure tables and drum tracks
-        working-directory: FunStuff/Adventure
-        run: ./advdataloader AdvDataLoader/adventure.adv
-
-      - name: Assemble stock-SIMH compatibility build
-        working-directory: FunStuff/Adventure
+      - name: Build stock-SIMH Adventure target
         env:
           AM1INCDIR: ${{ github.workspace }}/Am1Includes
         run: |
           export PATH="${{ github.workspace }}/Tools/AM1:$PATH"
-          am1 -DSIMH_COMPAT adventure.am1
-          mv adventure.rim adventure-simh.rim
-
-      - name: Build stock-SIMH drum image
-        working-directory: FunStuff/Adventure
-        run: ./advdrumloader -i simh-drum.img advtracks.drm
+          make -C FunStuff/Adventure adventure-simh
 
       - name: Build stock SIMH PDP-1
         run: |
@@ -50,23 +37,10 @@ jobs:
           test -x .ci-simh/BIN/pdp1
           .ci-simh/BIN/pdp1 -v
 
-      - name: Play Adventure on stock SIMH through DCS
+      - name: Play clean Adventure build through supplied SIMH config
+        working-directory: FunStuff/Adventure
         run: |
-          cat > /tmp/adventure-simh.ini <<EOF
-          set cpu pdp1d48
-          set cpu 16k
-          set drp enabled
-          attach drp ${{ github.workspace }}/FunStuff/Adventure/simh-drum.img
-          set dcs enabled
-          set dcs lines=1
-          set dcsl0 8b
-          attach dcs 20301
-          deposit ss 2
-          attach ptr ${{ github.workspace }}/FunStuff/Adventure/adventure-simh.rim
-          boot ptr
-          EOF
-
-          timeout 60s .ci-simh/BIN/pdp1 /tmp/adventure-simh.ini > /tmp/adventure-simh.log 2>&1 &
+          timeout 60s ../../.ci-simh/BIN/pdp1 adventure-simh.ini > /tmp/adventure-simh.log 2>&1 &
           SIMH_PID=$!
           trap 'kill "$SIMH_PID" 2>/dev/null || true' EXIT
 
@@ -101,23 +75,20 @@ jobs:
               text = bytes(transcript).decode("ascii", errors="replace")
               raise SystemExit(f"Did not receive expected text {needle!r}. Transcript:\n{text}")
 
-          sock = connect(20301)
+          sock = connect(2030)
           with sock:
               sock.settimeout(0.5)
               transcript = bytearray()
 
               # Stock SIMH exposes character-ready, but no guest-visible TCP
-              # connection-status bit. The compatibility path therefore uses
-              # the first received byte purely as a session-start event.
+              # connection-status bit. The compatibility path uses the first
+              # received byte only as the session-start event.
               sock.sendall(b"\r")
               receive_until(sock, transcript, "WOULD YOU LIKE INSTRUCTIONS?")
 
-              # Exercise the receive path and enter the real game.
               sock.sendall(b"NO\r")
               receive_until(sock, transcript, "YOU ARE STANDING AT THE END OF A ROAD BEFORE A SMALL BRICK BUILDING.")
 
-              # Exercise another complete command/response cycle so this is
-              # more than a banner test.
               sock.sendall(b"INVENTORY\r")
               receive_until(sock, transcript, "YOU ARE EMPTY-HANDED.")
 
@@ -140,12 +111,3 @@ jobs:
       - name: Show build outputs
         working-directory: FunStuff/Adventure
         run: ls -lh adventure-simh.rim simh-drum.img advtracks.drm
-
-      - name: Upload experiment outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: adventure-stock-simh-experiment
-          path: |
-            FunStuff/Adventure/adventure-simh.rim
-            FunStuff/Adventure/simh-drum.img
-            FunStuff/Adventure/advtracks.drm
