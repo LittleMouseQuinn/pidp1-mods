@@ -16,7 +16,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential flex bison
+          sudo apt-get install -y build-essential flex bison libpcre3-dev libedit-dev libpng-dev
 
       - name: Build AM1 assembler only
         run: make -C Tools/AM1 am1
