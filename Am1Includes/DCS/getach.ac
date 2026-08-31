@@ -2,9 +2,8 @@
 #define GETACH_AH
 
 // Wait for an ascii character on the current DCS channel.
-// The IO register is cleared and the character is 
+// The IO register is cleared and the character is
 // returned in the IO register.
-// If an error occurs, the IO register will be the rcs status with bit 0 set to 1.
 // The AC register is preserved.
 // Call via jda getach.
 
@@ -13,8 +12,27 @@
 getach,  0
 local
      dap %gachrt
-// loop waiting for a character
-%gachlp, 
+
+#ifdef SIMH_COMPAT
+// Stock SIMH's Type 630 DCS exposes scanner readiness through the DCS bit
+// in CKS.  Every SIMH_COMPAT TCB consumes its transmit-completion scanner
+// flag before returning, so scanner-ready here represents received input in
+// the normal interactive request/response path.
+%gachlp,
+     cli
+     cks
+     lai
+     and [SIMH_DCS_READY]
+     sza i
+     jmp %gachlp
+     cli
+     rch rchclr
+     rsc
+     jmp %gacdn
+#else
+// DCS2 path: poll the current channel status until data is ready or an
+// error/close is reported.
+%gachlp,
      cli
      rcs
      lai
@@ -29,11 +47,13 @@ local
      spi
      jmp %gacher
      jmp %gacdn
-%gacher, 
+%gacher,
      lai
      ior [400000
      lia
-%gacdn, 
+#endif
+
+%gacdn,
      lac getach
 %gachrt,  jmp .
 endloc
