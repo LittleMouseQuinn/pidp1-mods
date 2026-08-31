@@ -18,8 +18,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential flex bison
 
-      - name: Build AM1
-        run: make -C Tools/AM1
+      - name: Build AM1 assembler only
+        run: make -C Tools/AM1 am1
 
       - name: Build Adventure data tools
         run: |
