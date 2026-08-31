@@ -50,6 +50,71 @@ jobs:
           test -x .ci-simh/BIN/pdp1
           .ci-simh/BIN/pdp1 -v
 
+      - name: Boot Adventure on stock SIMH and verify DCS greeting
+        run: |
+          cat > /tmp/adventure-simh.ini <<EOF
+          set cpu pdp1d48
+          set cpu 16k
+          set drp enabled
+          attach drp ${{ github.workspace }}/FunStuff/Adventure/simh-drum.img
+          set dcs enabled
+          set dcs lines=1
+          set dcsl0 8b
+          attach dcs 20301
+          deposit ss 2
+          attach ptr ${{ github.workspace }}/FunStuff/Adventure/adventure-simh.rim
+          boot ptr
+          EOF
+
+          timeout 45s .ci-simh/BIN/pdp1 /tmp/adventure-simh.ini > /tmp/adventure-simh.log 2>&1 &
+          SIMH_PID=$!
+          trap 'kill "$SIMH_PID" 2>/dev/null || true' EXIT
+
+          python3 - <<'PY'
+          import socket
+          import time
+
+          deadline = time.time() + 20
+          sock = None
+          last_error = None
+          while time.time() < deadline:
+              try:
+                  sock = socket.create_connection(("127.0.0.1", 20301), timeout=1)
+                  break
+              except OSError as exc:
+                  last_error = exc
+                  time.sleep(0.2)
+          if sock is None:
+              raise SystemExit(f"DCS listener did not open: {last_error}")
+
+          with sock:
+              sock.settimeout(0.5)
+              # Stock SIMH has no guest-visible connection-status bit.  The
+              # SIMH_COMPAT shim intentionally uses the first received byte as
+              # the session-start signal; Adventure's first TCB consumes it.
+              sock.sendall(b"\r")
+              data = bytearray()
+              deadline = time.time() + 20
+              while time.time() < deadline:
+                  try:
+                      chunk = sock.recv(4096)
+                  except socket.timeout:
+                      continue
+                  if not chunk:
+                      break
+                  data.extend(chunk)
+                  if b"WELCOME TO ADVENTURE ON THE PDP-1!" in data:
+                      break
+
+              text = bytes(data).decode("ascii", errors="replace")
+              print(text)
+              if "WELCOME TO ADVENTURE ON THE PDP-1!" not in text:
+                  raise SystemExit("Adventure greeting was not received through stock SIMH DCS")
+          PY
+
+          echo "--- stock SIMH console log ---"
+          cat /tmp/adventure-simh.log
+
       - name: Show build outputs
         working-directory: FunStuff/Adventure
         run: ls -lh adventure-simh.rim simh-drum.img advtracks.drm
