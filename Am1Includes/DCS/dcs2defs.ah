@@ -5,17 +5,97 @@
 // See the documentation.
 // NOTE that rcr in DCS conflicts with rcr, rotate-combined-right.
 // It is renamed rchr here.
+//
+// When SIMH_COMPAT is defined, the standard PDP-1 Type 630 IOTs are kept,
+// but the DCS2-only socket-control operations are mapped onto the facilities
+// exposed by stock SIMH.  Stock SIMH configures the listener from the
+// simulator console rather than from guest memory, so SCB becomes a no-op and
+// RCS becomes CKS.  The DCS ready bit in CKS is bit 1 (000002).
+//
+// Stock SIMH also reports transmit completion through the same DCS scanner
+// flag used for receive readiness.  Its TCB therefore has to be serialized:
+// after every transmitted byte, wait for the scanner flag and unlock it with
+// RSC before returning to the caller.  This is intentionally only enabled for
+// SIMH_COMPAT builds; the normal DCS2 path is unchanged.
+
 #define rch iot 0022
 #define rrc iot 0122
 #define rchr iot 1022
 #define rsc iot 1122
-#define tcb iot 4022
 #define ssb iot 4122
 #define tcc iot 5022
 
 // rch and rcr will clear the IO register if
 // this is added to the IOT, else it ors.
 #define rchclr 002000
+
+#ifdef SIMH_COMPAT
+
+#define SIMH_DCS_READY 000002
+
+// Serialize a stock-SIMH DCS transmit.  The relative jump returns to the
+// CLI immediately after the TCB instruction.
+#define tcb iot 4022; cli; cks; lai; and [SIMH_DCS_READY]; sza i; jmp .-5; cli; rsc
+
+// DCS2 guest-side socket management has no stock-SIMH equivalent.  The
+// simulator-side ATTACH DCS command owns the listener instead.
+#define scb nop
+#define rle nop
+#define rpc nop
+#define rci nop
+#define ric nop
+#define rcs cks
+#define rwe nop
+#define roc nop
+#define res nop
+#define rxl nop
+
+// Channel request flags are consumed only by SCB.  SCB is a no-op in this
+// mode, so these reduce to zero while preserving source compatibility.
+#define dcftel 000000
+#define dcfflex 000000
+#define dcfecho 000000
+#define dcfioc 000000
+#define dcfioe 000000
+#define dcfior 000000
+#define dcfie 000000
+#define dcfsrv 000000
+#define rxlfta 000000
+#define rxlucs 000000
+#define rxlchg 000000
+#define dcmsbs 000000
+#define dcmcha 000000
+
+// SCB directives likewise collapse to zero because SCB itself is a no-op.
+#define scbset 000000
+#define scbbnd 000000
+#define scbrst 000000
+#define scbclr 000000
+
+// Adventure uses dsfopn only to decide whether to issue SCB and dsfcon to
+// wait for a client.  In stock SIMH there is no guest-visible connection bit,
+// so dsfopn is always false and dsfcon is represented by the Type 630 scanner
+// ready bit.  The first character typed by a newly connected client therefore
+// acts as the session-start signal and is discarded by the first output TCB.
+#define dsfopn 000000
+#define dsfsvr 000000
+#define dsfcon SIMH_DCS_READY
+#define dsfful 000000
+#define dsfrdy SIMH_DCS_READY
+#define dsfser 000000
+#define dsfcls 000000
+#define dsfien 000000
+#define dsfior 000000
+#define dsfioc 000000
+#define dsfioe 000000
+#define dsfcur 000000
+
+#define dssrdy dsfcon
+#define dsserr 000000
+
+#else
+
+#define tcb iot 4022
 
 // Extended commands.
 #define scb iot 4222
@@ -100,6 +180,8 @@
 // and some combined ones
 #define dssrdy dsfopn+dsfcon
 #define dsserr dsfcls+dsfser+dsfful
+
+#endif
 
 // Errors returned in IO, dserr is the error flag
 // dseno - channel not open
