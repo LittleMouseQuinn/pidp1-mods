@@ -1,0 +1,57 @@
+name: Eve Adventure stock SIMH experiment
+
+on:
+  push:
+    branches:
+      - eve/adventure-stock-simh
+  workflow_dispatch:
+
+jobs:
+  build-adventure-simh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison
+
+      - name: Build AM1
+        run: make -C Tools/AM1
+
+      - name: Build Adventure data tools
+        run: |
+          make -C FunStuff/Adventure/AdvDataLoader
+          make -C FunStuff/Adventure/AdvDataLoader install
+
+      - name: Generate Adventure tables and drum tracks
+        working-directory: FunStuff/Adventure
+        run: ./advdataloader AdvDataLoader/adventure.adv
+
+      - name: Assemble stock-SIMH compatibility build
+        working-directory: FunStuff/Adventure
+        env:
+          AM1INCDIR: ${{ github.workspace }}/Am1Includes
+        run: |
+          export PATH="${{ github.workspace }}/Tools/AM1:$PATH"
+          am1 -DSIMH_COMPAT adventure.am1
+          mv adventure.rim adventure-simh.rim
+
+      - name: Build stock-SIMH drum image
+        working-directory: FunStuff/Adventure
+        run: ./advdrumloader -i simh-drum.img advtracks.drm
+
+      - name: Show build outputs
+        working-directory: FunStuff/Adventure
+        run: ls -lh adventure-simh.rim simh-drum.img advtracks.drm
+
+      - name: Upload experiment outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: adventure-stock-simh-experiment
+          path: |
+            FunStuff/Adventure/adventure-simh.rim
+            FunStuff/Adventure/simh-drum.img
+            FunStuff/Adventure/advtracks.drm
