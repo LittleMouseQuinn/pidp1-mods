@@ -43,6 +43,13 @@ jobs:
         working-directory: FunStuff/Adventure
         run: ./advdrumloader -i simh-drum.img advtracks.drm
 
+      - name: Build stock SIMH PDP-1
+        run: |
+          git clone --depth 1 https://github.com/simh/simh.git .ci-simh
+          make -C .ci-simh pdp1 NOVIDEO=1 TESTS=0
+          test -x .ci-simh/BIN/pdp1
+          .ci-simh/BIN/pdp1 -v
+
       - name: Show build outputs
         working-directory: FunStuff/Adventure
         run: ls -lh adventure-simh.rim simh-drum.img advtracks.drm
