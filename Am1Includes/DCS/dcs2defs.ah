@@ -22,7 +22,6 @@
 #define rrc iot 0122
 #define rchr iot 1022
 #define rsc iot 1122
-#define ssb iot 4122
 #define tcc iot 5022
 
 // rch and rcr will clear the IO register if
@@ -32,6 +31,12 @@
 #ifdef SIMH_COMPAT
 
 #define SIMH_DCS_READY 000002
+
+// Adventure executes CLI; SSB immediately after its connection-wait loop.
+// In stock SIMH, the first received byte is used as the session-start event.
+// Keep SSB's normal job of selecting send line 0, then consume that receive
+// event with RCC so it cannot be mistaken for the first transmit completion.
+#define ssb iot 4122; rchr
 
 // Serialize a stock-SIMH DCS transmit. The relative jump returns to the
 // CLI immediately after the TCB instruction. RCC (rchr here) clears the
@@ -78,7 +83,8 @@
 // wait for a client. In stock SIMH there is no guest-visible connection bit,
 // so dsfopn is always false and dsfcon is represented by the Type 630 scanner
 // ready bit. The first character typed by a newly connected client therefore
-// acts as the session-start signal and is discarded by the first output TCB.
+// acts as the session-start signal; the SIMH_COMPAT SSB macro above consumes
+// it immediately after the connection-wait loop.
 #define dsfopn 000000
 #define dsfsvr 000000
 #define dsfcon SIMH_DCS_READY
@@ -97,6 +103,7 @@
 
 #else
 
+#define ssb iot 4122
 #define tcb iot 4022
 
 // Extended commands.
