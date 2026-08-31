@@ -44,11 +44,15 @@ a response generator from the PDP-10 era would still create a valid response str
 
 ## So how can I run it?
 
-Only one way, the pidp1-mods version of the pidp-1.
+The native target is the pidp1-mods version of the pidp-1.
 
-Why? Because it needs the Type 23 drum, the DCS communications system (more on that later), and since the
-full game requires a time-of-day clock for the closing hours and such, the Chrono-Log 20,000 clock.
-These were all also written by me, and not ported elsewhere.
+Why? Because the full game uses the Type 23 drum, the DCS communications system (more on that later), and a
+time-of-day clock for the closing hours and such, the Chrono-Log 20,000 clock.
+These were all also written by me.
+
+There is also a stock SIMH compatibility build described below. It uses stock SIMH's Type 23 drum, PDP-1D
+CPU support, and Type 630 DCS networking. Sense switch 5 is enabled in that configuration, so the nonstandard
+Chrono-Log clock is not required and the time-dependent features are disabled.
 
 It also uses a few of the basic and quite useful PDP1-D extensions, liai, lai, and szi.
 
@@ -73,7 +77,48 @@ In the Adventure directory, type 'make drum' and it will copy the data to the dr
 Why telnet? Because you'd go insane using the Soroban. Been there, done that. No thanks.\
 And this brings us to DCS. It uses my implementation, DCS2, which while it has all the standard IOTs of the original
 DCS, it adds socket support and telnet emulation.
-That's nonstandard, so you need mine.
+
+## Stock SIMH compatibility
+
+Stock SIMH turns out to be quite close to what Adventure needs. Its PDP-1 already implements the PDP-1D CPU
+extensions and the Type 23 parallel drum, and its Type 630 DCS is backed by SIMH's TMXR network layer.
+The important difference is the guest interface: stock SIMH implements the original Type 630 IOTs, but not
+DCS2's guest-side SCB/RCS socket-control and status extensions.
+
+The `SIMH_COMPAT` build adapts that difference on the Adventure side. It uses stock Type 630 character I/O,
+uses the DCS scanner flag for receive and transmit completion, and leaves socket listener setup to the SIMH
+console. The normal DCS2 build is unchanged.
+
+To build the stock SIMH version from `FunStuff/Adventure`:
+
+```
+make adventure-simh
+```
+
+That produces `adventure-simh.rim` and a local `simh-drum.img`. Unlike the normal pidp1-mods build, it does
+not write the live drum image under `/opt`.
+
+Run a current stock SIMH PDP-1 from the Adventure directory with the supplied command file:
+
+```
+pdp1 adventure-simh.ini
+```
+
+Then connect to port 2030 with telnet and press Enter once. Stock SIMH's original DCS interface does not expose
+a guest-visible network connection-status bit, so the first received character is used only to signal the start
+of the session. Adventure then presents its normal greeting and command interface.
+
+The supplied SIMH configuration selects PDP1D48 with 16K memory, attaches the local Type 23 drum image, enables
+one 8-bit DCS line, sets sense switch 5, attaches the AM1 multi-bank RIM tape to the paper-tape reader, and boots
+it through the PDP-1 loader.
+
+This path has been exercised against current upstream SIMH by booting Adventure over the paper-tape reader,
+reading the game data from the stock Type 23 drum, answering the instructions question over stock DCS, entering
+the starting room, and issuing an `INVENTORY` command successfully.
+
+With sense switch 5 set, closing-time behavior, save/restore anti-spoofing, and other time-dependent behavior is
+disabled, as described below. The Chrono-Log IOT is therefore not called. The native pidp1-mods configuration
+remains the path for the complete clock-dependent behavior.
 
 ## Wizard access
 
