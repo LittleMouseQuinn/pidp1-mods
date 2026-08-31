@@ -10,7 +10,7 @@ jobs:
   build-adventure-simh:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out clean contribution branch
+      - name: Check out latest clean contribution branch
         uses: actions/checkout@v4
         with:
           ref: adventure-stock-simh
