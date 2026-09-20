@@ -1,0 +1,61 @@
+FROM debian:bookworm AS build
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    flex \
+    bison \
+    git \
+    ca-certificates \
+    libpcre3-dev \
+    libedit-dev \
+    libpng-dev \
+    libsdl2-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+# pidp1-mods build tools expect the repository at /opt/pidp1-mods.
+RUN mkdir -p /opt /src/bin \
+ && ln -s /src /opt/pidp1-mods \
+ && make -C Tools/AM1 install
+
+ENV PATH="/src/bin:${PATH}"
+
+RUN make -C FunStuff/Adventure clean \
+ && make -C FunStuff/Adventure adventure-simh
+
+# Pin the stock SIMH revision used by the current automated compatibility run.
+RUN git clone https://github.com/simh/simh.git /simh \
+ && cd /simh \
+ && git checkout 47b7ddabbe5b548cfc32f2fd45f7bed238ff7921 \
+ && make pdp1
+
+FROM node:26-bookworm-slim
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcre3 \
+    libedit2 \
+    libpng16-16 \
+    libsdl2-2.0-0 \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY WebTestBench/package.json ./package.json
+RUN npm install --omit=dev
+
+COPY WebTestBench/server.mjs ./server.mjs
+COPY WebTestBench/public ./public
+
+RUN mkdir -p /app/bin /app/assets
+COPY --from=build /simh/BIN/pdp1 /app/bin/pdp1
+COPY --from=build /src/FunStuff/Adventure/adventure-simh.rim /app/assets/adventure-simh.rim
+COPY --from=build /src/FunStuff/Adventure/simh-drum.img /app/assets/simh-drum.img
+
+CMD ["node", "server.mjs"]
