@@ -32,10 +32,11 @@
 // 0, then RCC consumes that event before the first output byte is transmitted.
 #define ssb iot 4122; rchr
 
-// Serialize transmit completion. RSC alone is not sufficient because it
-// unlocks the scanner without clearing the line flag; RCC clears the flag
-// and unlocks the scanner in one operation.
-#define tcb iot 4022; cli; cks; lai; and [SIMH_DCS_READY]; sza i; jmp .-5; cli; rchr
+// Keep each TCB call one word, as it is under native DCS2.  Adventure is
+// tight enough in banks 1 and 2 that expanding the completion wait inline at
+// every output site no longer fits.  simhdcs.ac supplies one bank-local
+// simhtcb routine in each bank that uses TCB.
+#define tcb jda simhtcb
 
 // DCS2 extended guest-side socket operations have no stock-SIMH equivalent.
 // ATTACH DCS on the simulator console owns the listener.
