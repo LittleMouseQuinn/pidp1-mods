@@ -38,10 +38,6 @@ ADVENTURE 1977 WOODS VERSION
 
 octal
 
-#ifdef SIMH_COMPAT
-#include <DCS/simhdcs.ac>
-#endif
-
 // Send a bare linefeed.
 #define newline law '\n'; lia; tcb
 
@@ -6440,10 +6436,6 @@ constants
 // Note that there are significant restrictions to what can be here
 // and still be used from bank 0.
 bank 1
-#ifdef SIMH_COMPAT
-#include <DCS/simhdcs.ac>
-#endif
-
 0/
 
 // advPrintMsg -- print a message stored on the drum.
@@ -9542,13 +9534,13 @@ wcMotd,
                              // `sad [1]` then mis-branches and every packed-text print after the
                              // first MOTD read comes out with its middle character replaced.
 
-constants
-
-bank 2
 #ifdef SIMH_COMPAT
 #include <DCS/simhdcs.ac>
 #endif
 
+constants
+
+bank 2
 0/
 
 // The hint system (adven.f4 843-848/1806-1846/40000-40900,
@@ -11273,10 +11265,6 @@ voc_dwarv,     ascii "DWARV"
 // to. Scanned by playGame's vtScan loop; row order IS match precedence.
 // A single 0 word ends the table.
 bank 3
-#ifdef SIMH_COMPAT
-#include <DCS/simhdcs.ac>
-#endif
-
 0/
 #include "Includes/adv_verbtab.ac"
 
@@ -14678,6 +14666,10 @@ dwvTmp, 0                     // pointer-indirection temp
 // rather than two calls' worth of composition.
 #include <UTIL/time.ac>
 
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 constants
 bank 2
 
@@ -17235,6 +17227,14 @@ count2, 0
 #include "Includes/adv_objheremsg.ac"
 #include "Includes/adv_objtreasure.ac"
 
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 constants
 bank 0
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 start boot
