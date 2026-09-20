@@ -16,7 +16,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential flex bison netcat-openbsd libpcre3-dev libedit-dev libpng-dev libsdl2-dev
+          sudo apt-get install -y build-essential flex bison netcat-openbsd inetutils-telnet libpcre3-dev libedit-dev libpng-dev libsdl2-dev
           sudo mkdir -p /opt
           sudo ln -s "$GITHUB_WORKSPACE" /opt/pidp1-mods
           mkdir -p "$GITHUB_WORKSPACE/bin"
@@ -52,56 +52,22 @@ jobs:
         run: |
           /tmp/simh/BIN/pdp1 adventure-simh.ini >/tmp/pdp1.log 2>&1 &
           echo $! >/tmp/pdp1.pid
-          python3 - <<'PY'
-          import socket, time, pathlib, sys
+          # Exercise the same interface a real user does. Stock SIMH's TMXR
+          # listener speaks Telnet; a raw TCP client does not negotiate IAC
+          # options and can feed protocol bytes into the PDP-1 guest.
+          (
+            sleep 1
+            printf '\r\n'
+            sleep 2
+            printf 'NO\r\n'
+            sleep 2
+            printf 'INVENTORY\r\n'
+            sleep 2
+          ) | timeout 10 telnet 127.0.0.1 2030 > /tmp/adventure-session.txt 2>&1 || true
 
-          deadline = time.time() + 20
-          s = None
-          last = None
-          while time.time() < deadline:
-              try:
-                  s = socket.create_connection(("127.0.0.1", 2030), timeout=1)
-                  break
-              except OSError as e:
-                  last = e
-                  time.sleep(0.25)
-          if s is None:
-              raise SystemExit(f"could not connect to stock SIMH DCS: {last}")
-
-          s.settimeout(0.25)
-          chunks = []
-
-          def drain(seconds):
-              end = time.time() + seconds
-              while time.time() < end:
-                  try:
-                      data = s.recv(65536)
-                      if not data:
-                          return
-                      chunks.append(data)
-                  except socket.timeout:
-                      pass
-
-          # Stock SIMH has no guest-visible TCP connected bit. The first
-          # received byte is intentionally used as Adventure's session-start
-          # event by SIMH_COMPAT, matching the previously verified path.
-          s.sendall(b"\r")
-          drain(2.0)
-          s.sendall(b"NO\r")
-          drain(2.0)
-          s.sendall(b"INVENTORY\r")
-          drain(2.0)
-
-          data = b"".join(chunks)
-          pathlib.Path("/tmp/adventure-session.bin").write_bytes(data)
-          text = data.decode("ascii", errors="ignore")
-          print(text)
-
-          required = ["WELCOME TO ADVENTURE", "YOU ARE EMPTY-HANDED"]
-          missing = [x for x in required if x not in text]
-          if missing:
-              raise SystemExit("missing expected Adventure output: " + ", ".join(missing))
-          PY
+          cat /tmp/adventure-session.txt
+          grep -q "WELCOME TO ADVENTURE" /tmp/adventure-session.txt
+          grep -q "YOU ARE EMPTY-HANDED" /tmp/adventure-session.txt
           kill "$(cat /tmp/pdp1.pid)" || true
           wait "$(cat /tmp/pdp1.pid)" || true
 
@@ -109,4 +75,4 @@ jobs:
         if: failure()
         run: |
           cat /tmp/pdp1.log 2>/dev/null || true
-          cat /tmp/adventure-session.bin 2>/dev/null || true
+          cat /tmp/adventure-session.txt 2>/dev/null || true
