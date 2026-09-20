@@ -60,3 +60,5 @@ Vercel detects `Dockerfile.vercel` automatically.
 
 After the preview deployment is verified, a custom domain such as
 `pdp1.evequinn.org` can be attached to the Vercel project.
+
+Build status is verified by the branch-only end-to-end container smoke test.
