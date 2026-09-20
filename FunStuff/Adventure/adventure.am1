@@ -226,10 +226,6 @@ octal
 #define CMDBUF_LAST  (cmdbuf+0d30)
 #define pendObjBuf   cmdbuf:0+0d32    // :0 so keepParse can name it from bank 3
 
-#ifdef SIMH_COMPAT
-#include <DCS/simhdcs.ac>
-#endif
-
 // SAVE/RESTORE drum layout for the one save slot this game keeps.
 // This layout must stay within (SAVE_ENDGAME_OFFSET + SAVE_ENDGAME_WORDS
 // and friends) <= SAVE_BLOCK_WORDS.
@@ -6388,10 +6384,6 @@ wcHaveRec,
     jda drumRead
     law wcMotdRec              // second transfer: MOTD's 222 words, same track,
     jda drumRead                 // immediately following the core record (bank 1
-
-#ifdef SIMH_COMPAT
-#include <DCS/simhdcs.ac>
-#endif
                                      // dest -- see WC_MOTD_OFFSET's own comment)
 wclRtn,
     eem
@@ -6448,6 +6440,10 @@ constants
 // Note that there are significant restrictions to what can be here
 // and still be used from bank 0.
 bank 1
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 0/
 
 // advPrintMsg -- print a message stored on the drum.
@@ -9389,10 +9385,6 @@ ctpCheckTreasure,
     sub [objLoc:0             // AC = the object's index into the parallel object-table arrays
                                  // (objLoc:0's tag cancels out of the subtraction)
     add [objTreasure:2         // objTreasure lives in bank 2
-
-#ifdef SIMH_COMPAT
-#include <DCS/simhdcs.ac>
-#endif
     dac treasurePtr
     lac i treasurePtr
     SKIP_NEXT_IF_AC_ZERO                    // skip if AC == 0 (not a treasure) -- unhandled
@@ -9553,6 +9545,10 @@ wcMotd,
 constants
 
 bank 2
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 0/
 
 // The hint system (adven.f4 843-848/1806-1846/40000-40900,
@@ -11277,6 +11273,10 @@ voc_dwarv,     ascii "DWARV"
 // to. Scanned by playGame's vtScan loop; row order IS match precedence.
 // A single 0 word ends the table.
 bank 3
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 0/
 #include "Includes/adv_verbtab.ac"
 
