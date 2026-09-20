@@ -21,8 +21,26 @@ local rtn, loop, done, err
      lac rtn
      and [07777
      dac rtn
-// loop waiting for a character
+
 loop,
+#ifdef SIMH_COMPAT
+     // Stock SIMH's Type 630 DCS exposes scanner readiness through the DCS
+     // bit in CKS. SIMH_COMPAT TCB consumes each transmit-completion scanner
+     // flag before returning, so scanner-ready here represents received input
+     // in Adventure's normal interactive request/response path.
+     cli
+     cks
+     lai
+     and [SIMH_DCS_READY
+     sza i
+     jmp loop
+     cli
+     rch rchclr
+     rsc
+     jmp done
+#else
+     // DCS2 path: poll the current channel status until data is ready or an
+     // error/close is reported.
      cli
      rcs
      lai
@@ -37,11 +55,13 @@ loop,
      spi
      jmp err
      jmp done
-err, 
+err,
      lai
      ior [400000
      lia
-done, 
+#endif
+
+done,
      lac getach
      jmp i rtn
 rtn, 0
