@@ -1,0 +1,14 @@
+{
+  "name": "eve-pdp1-adventure-testbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser test bench for Eve Quinn's stock-SIMH PDP-1 Adventure compatibility work",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  }
+}
