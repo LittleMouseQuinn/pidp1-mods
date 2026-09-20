@@ -52,6 +52,15 @@ jobs:
         run: |
           /tmp/simh/BIN/pdp1 adventure-simh.ini >/tmp/pdp1.log 2>&1 &
           echo $! >/tmp/pdp1.pid
+          # Wait until SIMH has actually bound the DCS listener.
+          for i in $(seq 1 80); do
+            if nc -z 127.0.0.1 2030; then
+              break
+            fi
+            sleep 0.25
+          done
+          nc -z 127.0.0.1 2030
+
           # Exercise the same interface a real user does. Stock SIMH's TMXR
           # listener speaks Telnet; a raw TCP client does not negotiate IAC
           # options and can feed protocol bytes into the PDP-1 guest.
