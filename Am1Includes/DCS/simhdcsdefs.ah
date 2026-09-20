@@ -72,6 +72,11 @@
 #define scbmod 000000
 #define scbclr 000000
 
+// DCS2 channel-modification request fields also collapse to no-ops.
+#define dcmmty 000000
+#define dcmgen 000000
+#define dcmtel 000000
+
 // Adventure uses dsfopn only to decide whether to issue SCB and dsfcon to
 // wait for a client. The stock-SIMH listener already exists, so dsfopn is
 // always false. A received character raises IOS_DCS and serves as the
