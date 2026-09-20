@@ -12,7 +12,8 @@
 simhtcb, 0
 local rtn, wait
      dap rtn
-     cli
+     // TCB must see the caller's outgoing byte in IO. Do not CLI until
+     // after the transmit has been initiated.
      iot 4022
 wait,
      cli
