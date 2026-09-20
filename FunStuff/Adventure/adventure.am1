@@ -38,6 +38,10 @@ ADVENTURE 1977 WOODS VERSION
 
 octal
 
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 // Send a bare linefeed.
 #define newline law '\n'; lia; tcb
 
@@ -221,6 +225,10 @@ octal
 #define CMDBUF_WORDS 0d40             // boot's memset and cmdbuf's own table
 #define CMDBUF_LAST  (cmdbuf+0d30)
 #define pendObjBuf   cmdbuf:0+0d32    // :0 so keepParse can name it from bank 3
+
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
 
 // SAVE/RESTORE drum layout for the one save slot this game keeps.
 // This layout must stay within (SAVE_ENDGAME_OFFSET + SAVE_ENDGAME_WORDS
@@ -6380,6 +6388,10 @@ wcHaveRec,
     jda drumRead
     law wcMotdRec              // second transfer: MOTD's 222 words, same track,
     jda drumRead                 // immediately following the core record (bank 1
+
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
                                      // dest -- see WC_MOTD_OFFSET's own comment)
 wclRtn,
     eem
@@ -9377,6 +9389,10 @@ ctpCheckTreasure,
     sub [objLoc:0             // AC = the object's index into the parallel object-table arrays
                                  // (objLoc:0's tag cancels out of the subtraction)
     add [objTreasure:2         // objTreasure lives in bank 2
+
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
     dac treasurePtr
     lac i treasurePtr
     SKIP_NEXT_IF_AC_ZERO                    // skip if AC == 0 (not a treasure) -- unhandled
