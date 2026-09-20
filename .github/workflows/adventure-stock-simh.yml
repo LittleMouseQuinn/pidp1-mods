@@ -1,0 +1,112 @@
+name: Adventure stock SIMH compatibility
+
+on:
+  push:
+    branches:
+      - adventure-stock-simh-2026-09-rebase
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison netcat-openbsd
+          sudo mkdir -p /opt
+          sudo ln -s "$GITHUB_WORKSPACE" /opt/pidp1-mods
+          mkdir -p "$GITHUB_WORKSPACE/bin"
+
+      - name: Build AM1
+        run: |
+          make -C Tools/AM1 install
+          echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+
+      - name: Verify native Adventure still assembles
+        run: |
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          make -C FunStuff/Adventure clean
+          make -C FunStuff/Adventure adventure.rim
+          test -s FunStuff/Adventure/adventure.rim
+
+      - name: Build stock SIMH Adventure variant
+        run: |
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          make -C FunStuff/Adventure clean
+          make -C FunStuff/Adventure adventure-simh
+          test -s FunStuff/Adventure/adventure-simh.rim
+          test -s FunStuff/Adventure/simh-drum.img
+
+      - name: Build stock SIMH PDP-1
+        run: |
+          git clone --depth 1 https://github.com/simh/simh.git /tmp/simh
+          make -C /tmp/simh pdp1
+          test -x /tmp/simh/BIN/pdp1
+
+      - name: Boot and exercise Adventure on stock SIMH
+        working-directory: FunStuff/Adventure
+        run: |
+          /tmp/simh/BIN/pdp1 adventure-simh.ini >/tmp/pdp1.log 2>&1 &
+          echo $! >/tmp/pdp1.pid
+          python3 - <<'PY'
+          import socket, time, pathlib, sys
+
+          deadline = time.time() + 20
+          s = None
+          last = None
+          while time.time() < deadline:
+              try:
+                  s = socket.create_connection(("127.0.0.1", 2030), timeout=1)
+                  break
+              except OSError as e:
+                  last = e
+                  time.sleep(0.25)
+          if s is None:
+              raise SystemExit(f"could not connect to stock SIMH DCS: {last}")
+
+          s.settimeout(0.25)
+          chunks = []
+
+          def drain(seconds):
+              end = time.time() + seconds
+              while time.time() < end:
+                  try:
+                      data = s.recv(65536)
+                      if not data:
+                          return
+                      chunks.append(data)
+                  except socket.timeout:
+                      pass
+
+          # Stock SIMH has no guest-visible TCP connected bit. The first
+          # received byte is intentionally used as Adventure's session-start
+          # event by SIMH_COMPAT, matching the previously verified path.
+          s.sendall(b"\r")
+          drain(2.0)
+          s.sendall(b"NO\r")
+          drain(2.0)
+          s.sendall(b"INVENTORY\r")
+          drain(2.0)
+
+          data = b"".join(chunks)
+          pathlib.Path("/tmp/adventure-session.bin").write_bytes(data)
+          text = data.decode("ascii", errors="ignore")
+          print(text)
+
+          required = ["WELCOME TO ADVENTURE", "YOU ARE EMPTY-HANDED"]
+          missing = [x for x in required if x not in text]
+          if missing:
+              raise SystemExit("missing expected Adventure output: " + ", ".join(missing))
+          PY
+          kill "$(cat /tmp/pdp1.pid)" || true
+          wait "$(cat /tmp/pdp1.pid)" || true
+
+      - name: Show simulator log on failure
+        if: failure()
+        run: |
+          cat /tmp/pdp1.log 2>/dev/null || true
+          cat /tmp/adventure-session.bin 2>/dev/null || true
