@@ -1,0 +1,106 @@
+name: PDP-1 web test bench
+
+on:
+  push:
+    branches:
+      - eve/pdp1-web-testbench
+
+permissions:
+  contents: read
+
+jobs:
+  container-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Build Vercel container
+        run: docker build -f Dockerfile.vercel -t eve-pdp1-webtest .
+
+      - name: Start container
+        run: |
+          docker run -d --name eve-pdp1-webtest -p 3000:3000 eve-pdp1-webtest
+          for i in $(seq 1 80); do
+            if curl -fsS http://127.0.0.1:3000/health >/tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 0.25
+          done
+          docker logs eve-pdp1-webtest
+          exit 1
+
+      - name: Exercise browser WebSocket session
+        run: |
+          mkdir -p /tmp/ws-test
+          cd /tmp/ws-test
+          npm init -y >/dev/null 2>&1
+          npm install ws@8 >/dev/null 2>&1
+          cat > smoke.cjs <<'NODE'
+          const WebSocket = require("ws");
+
+          const ws = new WebSocket("ws://127.0.0.1:3000/ws");
+          let output = "";
+          let sentNo = false;
+          let sentInventory = false;
+          let finished = false;
+
+          const deadline = setTimeout(() => {
+            console.error(output);
+            process.exit(1);
+          }, 20000);
+
+          ws.on("message", (data, isBinary) => {
+            if (!isBinary) {
+              try {
+                const msg = JSON.parse(data.toString());
+                console.log("[status]", msg.message);
+                return;
+              } catch {}
+            }
+
+            const text = Buffer.from(data).toString("ascii");
+            process.stdout.write(text);
+            output += text;
+
+            if (!sentNo && output.includes("WOULD YOU LIKE INSTRUCTIONS?")) {
+              sentNo = true;
+              ws.send("NO\r");
+            }
+
+            if (!sentInventory && output.includes("YOU ARE STANDING AT THE END OF A ROAD")) {
+              sentInventory = true;
+              ws.send("INVENTORY\r");
+            }
+
+            if (
+              output.includes("WELCOME TO ADVENTURE") &&
+              output.includes("YOU'RE NOT CARRYING ANYTHING.")
+            ) {
+              finished = true;
+              clearTimeout(deadline);
+              ws.close();
+              setTimeout(() => process.exit(0), 100);
+            }
+          });
+
+          ws.on("error", err => {
+            console.error(err);
+            process.exit(1);
+          });
+
+          ws.on("close", () => {
+            if (!finished) {
+              console.error("\nWebSocket closed before expected Adventure transcript.");
+              console.error(output);
+              process.exit(1);
+            }
+          });
+          NODE
+          node smoke.cjs
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs eve-pdp1-webtest || true
