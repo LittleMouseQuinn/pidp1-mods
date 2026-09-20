@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Eve's PDP-1 Adventure Test Bench</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090b0c;
+      --panel: #111517;
+      --ink: #d9e5da;
+      --muted: #8fa095;
+      --edge: #39443d;
+      --accent: #b9d7bf;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; margin: 0; background: var(--bg); color: var(--ink); }
+    body {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      padding: clamp(12px, 3vw, 30px);
+    }
+    main { width: min(1100px, 100%); margin: 0 auto; }
+    header { margin-bottom: 14px; }
+    h1 { font-size: clamp(1.1rem, 3vw, 1.6rem); margin: 0 0 6px; font-weight: 650; }
+    p { color: var(--muted); margin: 4px 0; line-height: 1.45; }
+    #status { color: var(--accent); }
+    #terminal {
+      margin-top: 14px;
+      min-height: 68vh;
+      max-height: 76vh;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: var(--panel);
+      border: 1px solid var(--edge);
+      border-radius: 8px;
+      padding: 14px;
+      outline: none;
+      line-height: 1.34;
+      font-size: clamp(13px, 1.8vw, 16px);
+      caret-color: transparent;
+      box-shadow: inset 0 0 24px rgba(0,0,0,.35);
+    }
+    #terminal:focus { border-color: #68796d; }
+    .controls { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+    button {
+      font: inherit;
+      color: var(--ink);
+      background: var(--panel);
+      border: 1px solid var(--edge);
+      border-radius: 6px;
+      padding: 8px 11px;
+      cursor: pointer;
+    }
+    button:hover { border-color: #68796d; }
+    .hint { font-size: .85rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Eve's PDP-1 Adventure Test Bench</h1>
+    <p>Current <strong>pidp1-mods Adventure</strong> running on an unmodified stock SIMH PDP-1.</p>
+    <p id="status">Connecting...</p>
+  </header>
+
+  <div id="terminal" tabindex="0" role="textbox" aria-label="PDP-1 terminal output and keyboard input"></div>
+
+  <div class="controls">
+    <button id="reconnect" type="button">New session</button>
+    <button id="clear" type="button">Clear screen</button>
+    <span class="hint">Click the terminal, then type normally. Enter sends carriage return.</span>
+  </div>
+</main>
+
+<script>
+(() => {
+  const terminal = document.getElementById("terminal");
+  const status = document.getElementById("status");
+  const reconnectButton = document.getElementById("reconnect");
+  const clearButton = document.getElementById("clear");
+  const decoder = new TextDecoder("ascii");
+  let ws;
+
+  function append(text) {
+    terminal.textContent += text;
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+
+  function connect() {
+    if (ws) {
+      try { ws.close(); } catch {}
+    }
+
+    terminal.textContent = "";
+    status.textContent = "Connecting...";
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${scheme}://${location.host}/ws`);
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = () => {
+      status.textContent = "Connected. Starting PDP-1...";
+      terminal.focus();
+    };
+
+    ws.onmessage = event => {
+      if (typeof event.data === "string") {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "status") {
+            status.textContent = msg.message;
+            return;
+          }
+        } catch {
+          append(event.data);
+        }
+      } else {
+        append(decoder.decode(new Uint8Array(event.data), { stream: true }));
+      }
+    };
+
+    ws.onclose = event => {
+      status.textContent = event.reason ? `Disconnected: ${event.reason}` : "Disconnected.";
+    };
+
+    ws.onerror = () => {
+      status.textContent = "Connection error.";
+    };
+  }
+
+  function send(text) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(text);
+  }
+
+  terminal.addEventListener("keydown", event => {
+    if (event.ctrlKey && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      send("\x03");
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      send("\r");
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      send("\x08");
+      return;
+    }
+
+    if (event.key === "Tab") {
+      event.preventDefault();
+      send("\t");
+      return;
+    }
+
+    if (event.key === "Delete") {
+      event.preventDefault();
+      send("\x7f");
+      return;
+    }
+
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+      event.preventDefault();
+      send(event.key);
+    }
+  });
+
+  terminal.addEventListener("paste", event => {
+    event.preventDefault();
+    const text = event.clipboardData.getData("text/plain")
+      .replace(/\r\n/g, "\n")
+      .replace(/\n/g, "\r");
+    send(text);
+  });
+
+  reconnectButton.addEventListener("click", connect);
+  clearButton.addEventListener("click", () => {
+    terminal.textContent = "";
+    terminal.focus();
+  });
+
+  connect();
+})();
+</script>
+</body>
+</html>
