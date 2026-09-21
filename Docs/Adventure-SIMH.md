@@ -53,6 +53,12 @@ Under `SIMH_COMPAT`:
 - TCB waits for and consumes its transmit-completion scanner event.
 - `getach` polls the stock DCS scanner and reads through the original
   RCH/RSC operations.
+- stock SIMH's Type 630 model uses one line buffer for both receive and
+  transmit. In Telnet binary mode a CR/LF (or CR/NUL) pair can therefore
+  leave a padding byte queued after Adventure accepts CR; that byte can race
+  the next TCB and overwrite an outgoing character. The compatibility
+  `getach` coalesces the optional LF/NUL after CR, using a bounded look-ahead
+  so bare-CR clients still work.
 
 Normal pidp1-mods builds still include the native DCS2 definitions unchanged.
 
@@ -64,7 +70,11 @@ against stock SIMH commit
 complete greeting, accepted `NO` at the instructions question, entered the
 starting-road room, and returned `YOU ARE EMPTY-HANDED.` for `INVENTORY`.
 
-This September rebase starts from Bill's current upstream after the large
-Adventure/AM1/DCS updates. The branch includes an automated build and stock
-SIMH smoke test so the rebased path is not presented upstream as verified
-until that current-code test passes.
+The September rebase starts from Bill's current upstream after the large
+Adventure/AM1/DCS updates. On 20-Sep-2026 (CI completed 21-Sep UTC), GitHub
+Actions run 35548714848 built the native Adventure target, built the
+`SIMH_COMPAT` target, built stock SIMH PDP-1 at commit
+`47b7ddabbe5b548cfc32f2fd45f7bed238ff7921`, and exercised the game through
+an ordinary Telnet CR/LF session. The transcript was character-clean: the
+full greeting printed, `NO` reached the starting-road room, and `INVENTORY`
+returned `YOU'RE NOT CARRYING ANYTHING.`
