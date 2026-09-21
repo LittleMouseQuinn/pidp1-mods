@@ -9534,6 +9534,10 @@ wcMotd,
                              // `sad [1]` then mis-branches and every packed-text print after the
                              // first MOTD read comes out with its middle character replaced.
 
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 constants
 
 bank 2
@@ -14662,6 +14666,10 @@ dwvTmp, 0                     // pointer-indirection temp
 // rather than two calls' worth of composition.
 #include <UTIL/time.ac>
 
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 constants
 bank 2
 
@@ -17219,6 +17227,14 @@ count2, 0
 #include "Includes/adv_objheremsg.ac"
 #include "Includes/adv_objtreasure.ac"
 
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 constants
 bank 0
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
+
 start boot
