@@ -11,7 +11,7 @@
 #include <DCS/dcs2defs.ah>
 
 getach,  0
-local rtn, loop, done, err
+local rtn, loop, done, err, simhpoll, simhgot, simhpendingready, simhcrwait, simhcrtick, simhchecklf, simhpad, simhsave, simhwait, simhpending, simhpendingvalid
      dac rtn
      // Check to see if eem is on.
      // If not, the return address needs to be masked to 12 bits.
@@ -25,19 +25,97 @@ local rtn, loop, done, err
 loop,
 #ifdef SIMH_COMPAT
      // Stock SIMH's Type 630 DCS exposes scanner readiness through the DCS
-     // bit in CKS. SIMH_COMPAT TCB consumes each transmit-completion scanner
-     // flag before returning, so scanner-ready here represents received input
-     // in Adventure's normal interactive request/response path.
+     // bit in CKS. The hardware model has only one byte buffer per line for
+     // BOTH receive and transmit, so a second byte arriving while TCB is
+     // pending can overwrite the outgoing character.
+     //
+     // Modern Telnet commonly negotiates binary mode and sends Enter as
+     // CR/LF (or, per NVT, CR/NUL). Adventure historically returns from a
+     // line read as soon as it sees CR. That leaves the padding byte queued;
+     // the first following TCB can then race it and lose an output byte.
+     //
+     // Coalesce the optional byte here, at the compatibility boundary. After
+     // CR, wait a little more than one stock PDP-1 TMXR polling interval for
+     // LF/NUL. A bare-CR client therefore pays only this bounded delay. If a
+     // different byte is already waiting, preserve one byte for the next
+     // getach call instead of eating it.
+     lac simhpendingvalid
+     sza
+     jmp simhpendingready
+
+simhpoll,
      cli
      cks
      lai
      and [SIMH_DCS_READY
      sza i
-     jmp loop
+     jmp simhpoll
      cli
      rch rchclr
      rsc
+
+simhgot,
+     lai
+     sub ['\r'
+     sza
      jmp done
+
+     // Stock PDP-1 SIMH starts tmxr_poll at 5000 instructions. This loop is
+     // roughly eleven instructions per pass, so 1000 passes safely spans a
+     // receive poll without turning a bare CR into an unbounded wait.
+     law 0d1000
+     dac simhwait
+simhcrwait,
+     cli
+     cks
+     lai
+     and [SIMH_DCS_READY
+     sza i
+     jmp simhcrtick
+
+     cli
+     rch rchclr
+     rsc
+     lai
+     sza
+     jmp simhchecklf
+     jmp simhpad                 // CR/NUL: swallow NUL, return CR
+
+simhchecklf,
+     sub ['\n'
+     sza
+     jmp simhsave
+simhpad,                         // CR/LF: swallow LF, return CR
+     law '\r'
+     lia
+     jmp done
+
+simhsave,
+     // A non-padding byte arrived during the short look-ahead. Keep it for
+     // the next getach call. Interactive Type 630 use remains half-duplex;
+     // this protects an eager next byte without pretending the hardware can
+     // safely accept an arbitrarily pipelined command while transmitting.
+     dio simhpending
+     law 1
+     dac simhpendingvalid
+     law '\r'
+     lia
+     jmp done
+
+simhcrtick,
+     lac simhwait
+     sub [1
+     dac simhwait
+     sza
+     jmp simhcrwait
+     law '\r'
+     lia
+     jmp done
+
+simhpendingready,
+     dzm simhpendingvalid
+     lio simhpending
+     jmp simhgot
 #else
      // DCS2 path: poll the current channel status until data is ready or an
      // error/close is reported.
@@ -65,6 +143,11 @@ done,
      lac getach
      jmp i rtn
 rtn, 0
+#ifdef SIMH_COMPAT
+simhwait, 0
+simhpending, 0
+simhpendingvalid, 0
+#endif
 endloc
 
 #endif
