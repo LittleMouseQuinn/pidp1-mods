@@ -52,14 +52,16 @@ jobs:
         run: |
           /tmp/simh/BIN/pdp1 adventure-simh.ini >/tmp/pdp1.log 2>&1 &
           echo $! >/tmp/pdp1.pid
-          # Wait until SIMH has actually bound the DCS listener.
+          # Wait for SIMH to report that the DCS listener is live. Do not
+          # probe the port with nc: every probe is a real DCS connection and
+          # perturbs the same guest-visible scanner state this test measures.
           for i in $(seq 1 80); do
-            if nc -z 127.0.0.1 2030; then
+            if grep -q "Listening on port 2030" /tmp/pdp1.log; then
               break
             fi
             sleep 0.25
           done
-          nc -z 127.0.0.1 2030
+          grep -q "Listening on port 2030" /tmp/pdp1.log
 
           # Exercise the same interface a real user does. Stock SIMH's TMXR
           # listener speaks Telnet; a raw TCP client does not negotiate IAC
@@ -76,7 +78,7 @@ jobs:
 
           cat /tmp/adventure-session.txt
           grep -q "WELCOME TO ADVENTURE" /tmp/adventure-session.txt
-          grep -q "YOU ARE EMPTY-HANDED" /tmp/adventure-session.txt
+          grep -q "YOU'RE NOT CARRYING ANYTHING" /tmp/adventure-session.txt
           kill "$(cat /tmp/pdp1.pid)" || true
           wait "$(cat /tmp/pdp1.pid)" || true
 
