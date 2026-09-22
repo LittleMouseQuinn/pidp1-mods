@@ -94,9 +94,9 @@ jobs:
 
           (
             sleep 1
-            # One byte is the stock-SIMH session-start handshake.  It is
-            # consumed by the guest before output begins.
-            printf 'X'
+            # A NUL is the stock-SIMH session-start handshake.  The guest
+            # consumes it before output begins, and it is not visible text.
+            printf '\000'
             sleep 6
             printf 'LOOK\r\n'
             sleep 4
@@ -106,6 +106,11 @@ jobs:
           cat /tmp/zmachine-session.txt || true
           echo '--- simulator log ---'
           cat /tmp/zmachine-simh.log || true
+
+          grep -q 'ZORK I: The Great Underground Empire' /tmp/zmachine-session.txt
+          test "$(grep -c 'West of House' /tmp/zmachine-session.txt)" -ge 2
+          ! grep -q 'LLOOOOKK' /tmp/zmachine-session.txt
+          ! grep -q 'I beg your pardon?' /tmp/zmachine-session.txt
 
           kill "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
           wait "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
