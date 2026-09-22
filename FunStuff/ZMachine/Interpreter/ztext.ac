@@ -2339,6 +2339,9 @@ zrkGotIO,
     SKIP_NEXT_IF_AC_ZERO             // sza: skip (fallthrough) unless in a sequence
     jmp zrkInSeq                        // no-skip: the byte continues one
 #ifdef SIMH_COMPAT
+    // The compatibility helper labels below are out-of-line.  Ordinary
+    // characters must skip them and continue at zrkByte.
+    jmp zrkByte
 zrkSimhPendingReady,
     dzm zrkSimhPendingValid
     lio zrkSimhPending
