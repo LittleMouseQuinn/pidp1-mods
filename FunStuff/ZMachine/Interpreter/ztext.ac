@@ -1461,8 +1461,17 @@ zdwLoop,
     and [dsfcon
     SKIP_NEXT_IF_AC_NOT_ZERO      // sza i: skip (fallthrough) if connected
     jmp zdwLoop                      // no-skip: not yet connected -- poll again
+#ifdef SIMH_COMPAT
+    // Stock SIMH has no guest-visible connection-status bit.  The first
+    // received byte is the deliberate session-start event.  Consume it and
+    // unlock the scanner before any TCC output begins.
+    cli
+    rch rchclr
+    rsc
+#else
     cli
     roc
+#endif
     lac polls
     jmp rtn
 rtn, jmp 0
@@ -2643,6 +2652,22 @@ zTermQuery,
     addlocal npar, seven, ncpr, soft, utf, seen
     addlocal osc, ansi, da22, claim
     farenter(rtn)                        // the window is closed: `lac i ptr`
+#ifdef SIMH_COMPAT
+    // The native query's timeout uses the DCS2/BBN countdown path, which is
+    // not yet part of the stock-SIMH bring-up.  Establish the documented
+    // silent-terminal fallback explicitly: 24x80, tier C/plain, no color.
+    lac [0d24]
+    dac rows
+    lac [0d80]
+    dac cols
+    lac [1]
+    dac plain
+    lac [0777742]
+    dac mask
+    cla
+    dac claim
+    jmp ztqSet
+#endif
     law ztqSeq
     dac ptr
 ztqSend,
