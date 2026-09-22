@@ -1,0 +1,114 @@
+#ifndef SIMHDCSDEFS_AH
+#define SIMHDCSDEFS_AH
+
+// Stock-SIMH compatibility definitions for PDP-1 programs written against
+// DCS2.  This header supplies source compatibility only; it does not claim
+// that DCS2's guest-side socket/session semantics exist in stock SIMH.
+//
+// Stock SIMH exposes the original Type 630 character IOTs and owns the TMXR
+// listener from the simulator console.  ZMachine uses TCC for output and does
+// not use TCB, so no Adventure-style TCB completion helper is required for
+// the first ZMachine compatibility build.
+
+#define rch iot 0022
+#define rrc iot 0122
+#define rchr iot 1022
+#define rsc iot 1122
+#define tcb iot 4022
+#define ssb iot 4122
+#define tcc iot 5022
+
+#define rchclr 002000
+
+// IOS_DCS in stock SIMH is bit 1 of the IO status word.
+#define SIMH_DCS_READY 000002
+
+// DCS2's guest-side control operations have no stock-SIMH equivalent.
+// Listener setup, line selection, and disconnect/rebind are simulator-side
+// concerns in this mode.  RCS maps to CKS so callers can still inspect the
+// stock DCS ready bit.
+#define scb nop
+#define rle nop
+#define rpc nop
+#define rci nop
+#define ric nop
+#define rcs cks
+#define rwe nop
+#define roc nop
+#define res nop
+#define rxl nop
+
+// DCS2 request/control fields are consumed only by operations that are no-ops
+// above.  Keep the symbols available so existing source still assembles.
+#define dcftel 000000
+#define dcfflex 000000
+#define dcfecho 000000
+#define dcfioc 000000
+#define dcfioe 000000
+#define dcfior 000000
+#define dcfie 000000
+#define dcfsrv 000000
+#define rxlfta 000000
+#define rxlucs 000000
+#define rxlchg 000000
+#define dcmsbs 000000
+#define dcmcha 000000
+
+#define scbset 000000
+#define scbbnd 000000
+#define scbrst 000000
+#define scbmod 000000
+#define scbclr 000000
+
+#define dcmmty 000000
+#define dcmgen 000000
+#define dcmtel 000000
+
+// Stock SIMH has no guest-visible open/connected/closed socket-status word.
+// For the initial compatibility seam, a received character (IOS_DCS) is the
+// only guest-visible readiness/session indication.  Runtime session handling
+// must therefore deliberately consume or preserve any byte used as the
+// session-start handshake.
+#define dsfopn 000000
+#define dsfsvr 000000
+#define dsfcon SIMH_DCS_READY
+#define dsfful 000000
+#define dsfrdy SIMH_DCS_READY
+#define dsfser 000000
+#define dsfcls 000000
+#define dsfien 000000
+#define dsfior 000000
+#define dsfioc 000000
+#define dsfioe 000000
+#define dsfcur 000000
+
+#define dssrdy dsfcon
+#define dsserr 000000
+
+#define dserr 400000
+#define dseflc 000000
+#define dseflf 000000
+#define dsefle 000000
+#define dsemen 000000
+#define dsemco 000000
+#define dseno 1
+#define dseoe 2
+#define dseic 3
+#define dsens 4
+#define dseil 5
+#define dseso 6
+#define dsebi 7
+#define dsecc 10
+#define dselo 11
+#define dseep 12
+#define dsenc 13
+
+#define dcfcks 000200
+
+#define flxerr 076
+#define flxnch 013
+#define flxetx 013
+#define flxnl 077
+#define ascnch 077
+
+#endif
