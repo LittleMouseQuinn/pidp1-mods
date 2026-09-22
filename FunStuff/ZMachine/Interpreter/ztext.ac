@@ -2266,6 +2266,13 @@ zrkRunning,
     dac tenths
 
 zrkPoll,
+#ifdef SIMH_COMPAT
+    // A byte read while coalescing CR/LF is preserved here for the next
+    // logical key instead of being eaten.
+    lac zrkSimhPendingValid
+    SKIP_NEXT_IF_AC_ZERO
+    jmp zrkSimhPendingReady
+#endif
     cli
     rcs                              // IO = the channel's status
     lai
@@ -2300,30 +2307,27 @@ zrkArm,
     jmp zrkPoll
 
 zrkGot,
+#ifdef SIMH_COMPAT
+    // Stock Type 630 RCH clears the line flag but does not unlock the
+    // scanner.  Pair it with RSC, matching the proven Adventure shim.
+    cli
+    rch rchclr
+    rsc
+#else
     rch rchclr                       // IO = the character
     spi                              // skip (fallthrough) if IO is positive
     jmp zrkDrop                         // no-skip: the read failed
+#endif
+zrkGotIO,
 #ifdef SIMH_COMPAT
-    // Stock Type 630 input does not do DCS2's telnet CR/LF coalescing.
-    // Remember an actual CR across calls; if the next byte is LF, consume
-    // it instead of returning a second Enter to the Z-machine.
+    // DCS2's telnet path coalesces Enter.  Stock SIMH delivers CR/LF (or
+    // CR/NUL) separately.  After an actual CR, wait a bounded interval for
+    // the padding byte so it cannot become a second command or race the
+    // first output TCC.  Preserve one eager non-padding byte for the next
+    // key call.
     lai
-    SKIP_NEXT_IF_DIFFERENT [0d10]
-    jmp zrkSimhLF
     SKIP_NEXT_IF_DIFFERENT [0d13]
-    jmp zrkSimhSawCR
-    dzm zrkSimhCR
-    jmp zrkSimhMapped
-zrkSimhLF,
-    lac zrkSimhCR
-    SKIP_NEXT_IF_AC_NOT_ZERO
-    jmp zrkSimhMapped
-    dzm zrkSimhCR
-    jmp zrkPoll
-zrkSimhSawCR,
-    lac [1]
-    dac zrkSimhCR
-zrkSimhMapped,
+    jmp zrkSimhCRStart
 #endif
     lai
     SKIP_NEXT_IF_AC_NOT_ZERO         // sza i: skip (fallthrough) on a real byte
@@ -2334,6 +2338,49 @@ zrkSimhMapped,
     lac seq
     SKIP_NEXT_IF_AC_ZERO             // sza: skip (fallthrough) unless in a sequence
     jmp zrkInSeq                        // no-skip: the byte continues one
+#ifdef SIMH_COMPAT
+zrkSimhPendingReady,
+    dzm zrkSimhPendingValid
+    lio zrkSimhPending
+    jmp zrkGotIO
+
+zrkSimhCRStart,
+    law 0d1000
+    dac zrkSimhWait
+zrkSimhCRWait,
+    cli
+    cks
+    lai
+    and [SIMH_DCS_READY]
+    SKIP_NEXT_IF_AC_NOT_ZERO
+    jmp zrkSimhCRTick
+    cli
+    rch rchclr
+    rsc
+    lai
+    SKIP_NEXT_IF_AC_NOT_ZERO
+    jmp zrkSimhCRDone               // CR/NUL
+    sub [0d10]
+    SKIP_NEXT_IF_AC_NOT_ZERO
+    jmp zrkSimhCRDone               // CR/LF
+    dio zrkSimhPending              // another byte arrived eagerly
+    lac [1]
+    dac zrkSimhPendingValid
+zrkSimhCRDone,
+    law 0d13
+    lia
+    jmp zrkByte
+zrkSimhCRTick,
+    lac zrkSimhWait
+    sub [1]
+    dac zrkSimhWait
+    SKIP_NEXT_IF_AC_ZERO
+    jmp zrkSimhCRWait
+    law 0d13
+    lia
+    jmp zrkByte
+#endif
+
 zrkByte,                             // IO = a byte read as itself
     lai                              // AC = the character again: IO still holds it
     SKIP_NEXT_IF_SAME [033]          // sas: skip (fallthrough) on ESC
@@ -2516,7 +2563,9 @@ raw, 0                               // 1 in zReadKeyRaw, no decoding
 seq, 0                               // 0 none, 1 ESC, 2 ESC [, 3 ESC O
     endlocal
 #ifdef SIMH_COMPAT
-zrkSimhCR, 0                          // previous returned raw byte was CR
+zrkSimhWait, 0
+zrkSimhPending, 0
+zrkSimhPendingValid, 0
 #endif
 
 // ========================================================================
