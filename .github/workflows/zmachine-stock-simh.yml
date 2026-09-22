@@ -130,8 +130,7 @@ jobs:
           # First Type 550/555 proof: ask Zork to save to slot 1 on DT2.
           send -- "SAVE\r"
           expect {
-            -re {Position[^
-]*\?} {}
+            "Position" {}
             timeout { exit 10 }
             eof { exit 11 }
           }
