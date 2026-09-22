@@ -6,6 +6,7 @@
 #
 #   make                          the image, and the story loader
 #   make zmachine.rim             the image alone
+#   make SIMH_COMPAT=1            stock-SIMH compatibility build
 #   make story STORY=file.z5      copy a story onto the drum (the whole drum
 #                                 is rewritten; saved games are on the
 #                                 tape mounted on drive 2, which this does
@@ -17,6 +18,8 @@
 # DRUM       the drum file make story writes
 # LPT64      must agree with lptType64 in pidp1.config: 0 is the Type 62
 #            line printer (the default), 1 the Type 64
+# SIMH_COMPAT 1 selects the guarded stock-SIMH compatibility definitions;
+#             0 (default) leaves the native pidp1-mods/DCS2 build unchanged
 #
 # am1 writes its output into the directory it runs in, so the image is
 # assembled in $(BUILD). am1's exit status does not show a failed assembly;
@@ -28,6 +31,11 @@ AM1       = am1
 AM1INCDIR ?= /opt/pidp1-mods/Am1Includes
 DRUM      = /opt/pidp1-mods/pdp23drum
 LPT64     = 0
+SIMH_COMPAT ?= 0
+SIMH_DEFINE =
+ifeq ($(SIMH_COMPAT),1)
+SIMH_DEFINE = -DSIMH_COMPAT=1
+endif
 LOADERDIR = ../Loader
 LOADER    = $(LOADERDIR)/zloader
 BUILD     = build_prod
@@ -45,7 +53,7 @@ zmachine.rim: $(SRCS)
 	@mkdir -p $(BUILD)
 	@rm -f $(BUILD)/zmemcore.rim $(BUILD)/am1.out
 	cd $(BUILD) && $(AM1) -S -i $(AM1INCDIR) -I $(AM1INCDIR)/UTIL \
-	    -DZ_TEST_HARNESS=0 -DZLPT_TYPE64=$(LPT64) \
+	    -DZ_TEST_HARNESS=0 -DZLPT_TYPE64=$(LPT64) $(SIMH_DEFINE) \
 	    ../zmemcore.am1 > am1.out 2>&1; cat am1.out
 	@high=`sed -n 's/^Bank 0, [0-7]* (\([0-9]*\) decimal).*$$/\1/p' $(BUILD)/am1.out`; \
 	if [ -z "$$high" ] || [ ! -f $(BUILD)/zmemcore.rim ]; then \
