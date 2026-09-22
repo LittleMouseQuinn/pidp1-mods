@@ -638,19 +638,33 @@ zsvaNotPad,
     sub [0d95]                  // ch - 127 (zReadKey reads DEL as 8)
     SKIP_NEXT_IF_AC_NEGATIVE    // sma: skip (fallthrough) if below 127
     jmp zsvaEndCancel              // no-skip: an arrow or F key -- cancels, unechoed
+#ifndef SIMH_COMPAT
     lio ch
-    tcc                         // the answer, echoed
+    tcc                         // DCS2 echo is off while reading, so echo
+                                //   the accepted answer here
+#endif
     jmp zsvaEnd                 // this one key decides
 
 zsvaEndCancel,                  // nothing that could be a position.
     dzm ch                      //   0 is below '1', so the test below cancels
 zsvaEnd,
+#ifdef SIMH_COMPAT
+    // Stock Type 630 echoes the digit itself and shares its receive and
+    // transmit buffer.  Drain the trailing Return before transmitting the
+    // line end, otherwise that receive byte can race this TCC.
+    jsp zsvDrain
+    lio [0d10]
+    tcc
+#else
     lio [0d10]                  // the line's end on the screen: LF,
     tcc                         //   which DCS2 sends as CR LF
+#endif
     eem                         // the word-wrap's column (ztext.ac)
     dzm i [zwCol:*]             //   starts again after it
     lem
+#ifndef SIMH_COMPAT
     jsp zsvDrain                // the RETURN typed after the digit
+#endif
     // '1' subtracts to plus zero, a valid answer: the test must be spa.
     lac ch
     sub [0d49]                  // ASCII '1'
