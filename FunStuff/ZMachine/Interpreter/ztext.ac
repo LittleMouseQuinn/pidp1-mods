@@ -1873,8 +1873,10 @@ zrlStore,
     add count
     lio ch
     farjda(zStoreByte:0)
-    lio key                          // stored, so echoed -- as typed,
-    tcc                              //   on a bare tcc (see the header)
+#ifndef SIMH_COMPAT
+    lio key                          // DCS2 echo is off while reading, so the
+    tcc                              //   application echoes stored input
+#endif
     lac count
     add [1]
     dac count
@@ -1926,12 +1928,21 @@ zrlBk1,
     cla
     dac count
 zrlErase,
+#ifdef SIMH_COMPAT
+    // Stock SIMH has already echoed the received BS, so the cursor is
+    // already over the character being erased.  Complete the erase only.
+    lio [0d32]
+    tcc
+    lio [0d8]
+    tcc
+#else
     lio [0d8]                        // back over the character,
     tcc
     lio [0d32]                       //   a space over it,
     tcc
     lio [0d8]                        //   and back over the space
     tcc
+#endif
     jmp zrlLoop
 
     // ---- the line is complete ------------------------------------------
@@ -2025,8 +2036,10 @@ zrlRecord,
     lio [0d121]                      // y
     farjda(zStoreByte:0)
 zrlNotFirst,
-    lio [0d10]                       // a finished line ends the screen's
-    tcc                              //   line too -- LF, which DCS2 sends as CR LF
+#ifndef SIMH_COMPAT
+    lio [0d10]                       // DCS2 read-side echo is off, so finish
+    tcc                              //   the line explicitly there
+#endif
                                      //   (see the header); a paused or stopped
                                      //   line, above, gets none
     dzm zwCol                        // the wrap's column starts again
@@ -2290,6 +2303,28 @@ zrkGot,
     rch rchclr                       // IO = the character
     spi                              // skip (fallthrough) if IO is positive
     jmp zrkDrop                         // no-skip: the read failed
+#ifdef SIMH_COMPAT
+    // Stock Type 630 input does not do DCS2's telnet CR/LF coalescing.
+    // Remember an actual CR across calls; if the next byte is LF, consume
+    // it instead of returning a second Enter to the Z-machine.
+    lai
+    SKIP_NEXT_IF_DIFFERENT [0d10]
+    jmp zrkSimhLF
+    SKIP_NEXT_IF_DIFFERENT [0d13]
+    jmp zrkSimhSawCR
+    dzm zrkSimhCR
+    jmp zrkSimhMapped
+zrkSimhLF,
+    lac zrkSimhCR
+    SKIP_NEXT_IF_AC_NOT_ZERO
+    jmp zrkSimhMapped
+    dzm zrkSimhCR
+    jmp zrkPoll
+zrkSimhSawCR,
+    lac [1]
+    dac zrkSimhCR
+zrkSimhMapped,
+#endif
     lai
     SKIP_NEXT_IF_AC_NOT_ZERO         // sza i: skip (fallthrough) on a real byte
     jmp zrkPoll                         // no-skip: a stray NUL -- keep waiting
@@ -2480,6 +2515,9 @@ quiet, 0                             // IO in, whose 0400000 is the no-echo flag
 raw, 0                               // 1 in zReadKeyRaw, no decoding
 seq, 0                               // 0 none, 1 ESC, 2 ESC [, 3 ESC O
     endlocal
+#ifdef SIMH_COMPAT
+zrkSimhCR, 0                          // previous returned raw byte was CR
+#endif
 
 // ========================================================================
 // zkTermRange -- does the story's terminating characters table list a key
