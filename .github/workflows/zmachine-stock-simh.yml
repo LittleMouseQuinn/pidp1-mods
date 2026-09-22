@@ -72,6 +72,7 @@ jobs:
         working-directory: FunStuff/ZMachine
         run: |
           ./zloader -i simh-drum.img Games/zork1.z3
+          : > simh-zsave.dta
           /tmp/simh/BIN/pdp1 zmachine-simh.ini >/tmp/zmachine-simh.log 2>&1 &
           echo $! >/tmp/zmachine-simh.pid
 
@@ -126,7 +127,24 @@ jobs:
             eof { exit 9 }
           }
 
-          # Leave telnet cleanly; the gameplay assertion has already passed.
+          # First Type 550/555 proof: ask Zork to save to slot 1 on DT2.
+          send -- "SAVE\r"
+          expect {
+            -re {Position[^
+]*\?} {}
+            timeout { exit 10 }
+            eof { exit 11 }
+          }
+          send -- "1\r"
+          expect {
+            ">" {}
+            timeout { exit 12 }
+            eof { exit 13 }
+          }
+
+          # Leave telnet cleanly; boot, gameplay and one save attempt have
+          # all completed.
+
           send -- "\035"
           expect "telnet>"
           send -- "quit\r"
@@ -141,6 +159,7 @@ jobs:
           grep -q 'ZORK I: The Great Underground Empire' /tmp/zmachine-session.txt
           test "$(grep -c 'You are standing in an open field west of a white house' /tmp/zmachine-session.txt)" -ge 2
           ! grep -q 'I beg your pardon' /tmp/zmachine-session.txt
+          grep -q 'Position' /tmp/zmachine-session.txt
 
           kill "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
           wait "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
@@ -156,4 +175,5 @@ jobs:
             /tmp/zmachine-am1-map.out
             FunStuff/ZMachine/Interpreter/build_prod/zmemcore.lst
             FunStuff/ZMachine/Interpreter/build_prod/zmemcore.sym
+            FunStuff/ZMachine/simh-zsave.dta
           if-no-files-found: ignore
