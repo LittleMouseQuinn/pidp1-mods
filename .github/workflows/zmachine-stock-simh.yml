@@ -43,6 +43,16 @@ jobs:
           test -s FunStuff/ZMachine/zmachine.rim
           test -x FunStuff/ZMachine/zloader
 
+      - name: Generate SIMH_COMPAT assembly map
+        run: |
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          cd FunStuff/ZMachine/Interpreter/build_prod
+          am1 -d -S -i /opt/pidp1-mods/Am1Includes -I /opt/pidp1-mods/Am1Includes/UTIL \
+              -DZ_TEST_HARNESS=0 -DZLPT_TYPE64=0 -DSIMH_COMPAT=1 \
+              ../zmemcore.am1 >/tmp/zmachine-am1-map.out 2>&1
+          grep -n -C 5 '174215' zmemcore.lst || true
+          grep -E 'zTextDcs|zSessionReset|simhtcc' zmemcore.sym || true
+
       - name: Build pinned stock SIMH PDP-1
         run: |
           git clone https://github.com/simh/simh.git /tmp/simh
@@ -65,13 +75,22 @@ jobs:
           /tmp/simh/BIN/pdp1 zmachine-simh.ini >/tmp/zmachine-simh.log 2>&1 &
           echo $! >/tmp/zmachine-simh.pid
 
+          ready=0
           for i in $(seq 1 80); do
             if nc -z 127.0.0.1 2031; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null; then
               break
             fi
             sleep 0.25
           done
-          nc -z 127.0.0.1 2031
+          if [ "$ready" -ne 1 ]; then
+            echo 'SIMH exited before the DCS listener stayed available:'
+            cat /tmp/zmachine-simh.log || true
+            exit 1
+          fi
 
           (
             sleep 1
@@ -99,4 +118,7 @@ jobs:
           path: |
             /tmp/zmachine-session.txt
             /tmp/zmachine-simh.log
+            /tmp/zmachine-am1-map.out
+            FunStuff/ZMachine/Interpreter/build_prod/zmemcore.lst
+            FunStuff/ZMachine/Interpreter/build_prod/zmemcore.sym
           if-no-files-found: ignore
