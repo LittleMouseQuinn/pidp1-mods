@@ -16,7 +16,10 @@
 #define rsc iot 1122
 #define tcb iot 4022
 #define ssb iot 4122
-#define tcc iot 5022
+// ZMachine emits TCC from several banks.  Map it to a bank-local helper
+// that waits for the original Type 630 transmit completion before another
+// byte can overwrite the one-line buffer.
+#define tcc jda simhtcc
 
 #define rchclr 002000
 
