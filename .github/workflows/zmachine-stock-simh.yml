@@ -1,0 +1,51 @@
+name: ZMachine stock SIMH lab
+
+on:
+  push:
+    branches:
+      - eve/zmachine-stock-simh-lab
+  workflow_dispatch:
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out lab branch
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison libpcre3-dev libedit-dev libpng-dev libsdl2-dev
+          sudo mkdir -p /opt
+          sudo ln -s "$GITHUB_WORKSPACE" /opt/pidp1-mods
+          mkdir -p "$GITHUB_WORKSPACE/bin"
+
+      - name: Build AM1
+        run: |
+          make -C Tools/AM1 install
+          echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+
+      - name: Verify native ZMachine still builds
+        run: |
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          make -C FunStuff/ZMachine clean
+          make -C FunStuff/ZMachine
+          test -s FunStuff/ZMachine/zmachine.rim
+          test -x FunStuff/ZMachine/zloader
+
+      - name: Build pinned stock SIMH PDP-1
+        run: |
+          git clone https://github.com/simh/simh.git /tmp/simh
+          git -C /tmp/simh checkout 47b7ddabbe5b548cfc32f2fd45f7bed238ff7921
+          make -C /tmp/simh pdp1
+          test -x /tmp/simh/BIN/pdp1
+
+      - name: Record stock clock target
+        run: |
+          grep -q 'int32 clk_cntr = 0' /tmp/simh/PDP1/pdp1_clk.c
+          grep -q 'CLK_HWRE_TPS    1000' /tmp/simh/PDP1/pdp1_clk.c
+          grep -q 'return clk_cntr + incr' /tmp/simh/PDP1/pdp1_clk.c
+          grep -q '#define rck iot 32' Am1Includes/CLOCK/clockdefs.ah
+          echo "Stock SIMH and pidp1-mods both expose RCK as PDP-1 IOT 32; timed-read compatibility can use the stock 1 ms counter."
