@@ -75,13 +75,13 @@ jobs:
 
           (
             sleep 1
-            printf '\r\n'
-            sleep 2
-            printf 'NO\r\n'
-            sleep 3
+            # One byte is the stock-SIMH session-start handshake.  It is
+            # consumed by the guest before output begins.
+            printf 'X'
+            sleep 6
             printf 'LOOK\r\n'
-            sleep 3
-          ) | timeout 12 telnet 127.0.0.1 2031 > /tmp/zmachine-session.txt 2>&1 || true
+            sleep 4
+          ) | timeout 14 telnet 127.0.0.1 2031 > /tmp/zmachine-session.txt 2>&1 || true
 
           echo '--- terminal transcript ---'
           cat /tmp/zmachine-session.txt || true
