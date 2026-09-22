@@ -1142,6 +1142,9 @@ bank ZLEAF_BANK
 #include "zobjects.ac"
 #include "ztext.ac"
 #include "zparser.ac"
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
 
 // ---- The undo log's tables ---------------------------------------------
 // The code and state are zsave.ac's, in bank ZPATCH_BANK; these 140 words
@@ -1384,6 +1387,9 @@ zerMsgBadText,
 zerMsgBadProp,
     ascii "bad property"
 
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
 constants
 
 // ========================================================================
@@ -1402,6 +1408,9 @@ bank ZPATCH_BANK
 #include "zpatch.ac"
 #include "zsave.ac"
 #include "zfont3.ac"
+#ifdef SIMH_COMPAT
+#include <DCS/simhdcs.ac>
+#endif
 constants
 
 bank 0
