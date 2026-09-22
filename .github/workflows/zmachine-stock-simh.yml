@@ -35,6 +35,14 @@ jobs:
           test -s FunStuff/ZMachine/zmachine.rim
           test -x FunStuff/ZMachine/zloader
 
+      - name: Verify guarded SIMH_COMPAT ZMachine assembles
+        run: |
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          make -C FunStuff/ZMachine clean
+          make -C FunStuff/ZMachine SIMH_COMPAT=1
+          test -s FunStuff/ZMachine/zmachine.rim
+          test -x FunStuff/ZMachine/zloader
+
       - name: Build pinned stock SIMH PDP-1
         run: |
           git clone https://github.com/simh/simh.git /tmp/simh
