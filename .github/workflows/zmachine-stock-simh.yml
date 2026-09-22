@@ -17,7 +17,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential flex bison netcat-openbsd inetutils-telnet libpcre3-dev libedit-dev libpng-dev libsdl2-dev
+          sudo apt-get install -y build-essential flex bison expect inetutils-telnet libpcre3-dev libedit-dev libpng-dev libsdl2-dev
           sudo mkdir -p /opt
           sudo ln -s "$GITHUB_WORKSPACE" /opt/pidp1-mods
           mkdir -p "$GITHUB_WORKSPACE/bin"
@@ -92,14 +92,46 @@ jobs:
             exit 1
           fi
 
-          (
-            sleep 1
-            # One deliberate byte starts the stock-SIMH guest session.
-            printf 'X'
-            sleep 6
-            printf 'LOOK\r\n'
-            sleep 4
-          ) | timeout 14 telnet 127.0.0.1 2031 > /tmp/zmachine-session.txt 2>&1 || true
+          expect <<'EOF'
+          log_file -noappend /tmp/zmachine-session.txt
+          set timeout 30
+          spawn telnet 127.0.0.1 2031
+          expect {
+            "Connected to the PDP-1 simulator DCS device" {}
+            timeout { exit 2 }
+            eof { exit 3 }
+          }
+
+          # One deliberate byte starts the stock-SIMH guest session.
+          send -- "X"
+
+          # Type only after the guest has finished booting and has actually
+          # reached its input prompt.  Stock Type 630 is half-duplex enough
+          # that blind typeahead can race the shared line buffer.
+          expect {
+            ">" {}
+            timeout { exit 4 }
+            eof { exit 5 }
+          }
+          send -- "LOOK\r"
+
+          expect {
+            "You are standing in an open field west of a white house" {}
+            timeout { exit 6 }
+            eof { exit 7 }
+          }
+          expect {
+            ">" {}
+            timeout { exit 8 }
+            eof { exit 9 }
+          }
+
+          # Leave telnet cleanly; the gameplay assertion has already passed.
+          send -- "\035"
+          expect "telnet>"
+          send -- "quit\r"
+          expect eof
+          EOF
 
           echo '--- terminal transcript ---'
           cat /tmp/zmachine-session.txt || true
