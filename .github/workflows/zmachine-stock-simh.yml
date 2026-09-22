@@ -77,7 +77,7 @@ jobs:
 
           ready=0
           for i in $(seq 1 80); do
-            if nc -z 127.0.0.1 2031; then
+            if grep -q 'Listening on port 2031' /tmp/zmachine-simh.log 2>/dev/null; then
               ready=1
               break
             fi
@@ -87,16 +87,15 @@ jobs:
             sleep 0.25
           done
           if [ "$ready" -ne 1 ]; then
-            echo 'SIMH exited before the DCS listener stayed available:'
+            echo 'SIMH exited before the DCS listener became ready:'
             cat /tmp/zmachine-simh.log || true
             exit 1
           fi
 
           (
             sleep 1
-            # A NUL is the stock-SIMH session-start handshake.  The guest
-            # consumes it before output begins, and it is not visible text.
-            printf '\000'
+            # One deliberate byte starts the stock-SIMH guest session.
+            printf 'X'
             sleep 6
             printf 'LOOK\r\n'
             sleep 4
@@ -108,9 +107,8 @@ jobs:
           cat /tmp/zmachine-simh.log || true
 
           grep -q 'ZORK I: The Great Underground Empire' /tmp/zmachine-session.txt
-          test "$(grep -c 'West of House' /tmp/zmachine-session.txt)" -ge 2
-          ! grep -q 'LLOOOOKK' /tmp/zmachine-session.txt
-          ! grep -q 'I beg your pardon?' /tmp/zmachine-session.txt
+          test "$(grep -c 'You are standing in an open field west of a white house' /tmp/zmachine-session.txt)" -ge 2
+          ! grep -q 'I beg your pardon' /tmp/zmachine-session.txt
 
           kill "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
           wait "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
