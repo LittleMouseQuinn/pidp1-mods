@@ -1,0 +1,30 @@
+// Stock SIMH Type 630 TCC helper.
+//
+// Stock SIMH models the original one-byte-per-line DCS buffer.  A bare TCC
+// schedules transmission and returns before that byte has necessarily left;
+// another TCC can therefore overwrite the same buffer.  DCS2 does not have
+// that source-level constraint.
+//
+// Under SIMH_COMPAT, simhdcsdefs.ah maps each source-level TCC to this local
+// JDA helper.  One copy is assembled in every ZMachine bank that emits TCC.
+// The helper waits for the stock DCS scanner flag, consumes the transmit
+// completion with RCC (rchr), restores the caller's AC, and leaves IO holding
+// the transmitted byte as the native IOT usefully does.
+
+simhtcc, 0
+local rtn, wait
+     dap rtn
+     // IO still holds the outgoing byte supplied by the caller.
+     iot 5022
+wait,
+     cli
+     cks
+     lai
+     and [SIMH_DCS_READY
+     sza i
+     jmp wait
+     cli
+     rchr
+     lac simhtcc
+rtn, jmp .
+endloc
