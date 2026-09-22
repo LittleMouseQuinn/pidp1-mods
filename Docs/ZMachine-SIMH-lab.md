@@ -27,9 +27,38 @@ ownership is moved outside the guest:
 - `zTextDcsOpen`: wait for a session-start indication rather than open/bind.
 - `zTextDcsNext`: leave the externally attached listener in place and wait
   for the next session-start indication rather than rebind.
-- DCS2 echo/socket modification requests become compatibility no-ops.
 - Connection startup can use the same deliberate first-character handshake
   proven by the Adventure work; a browser proxy can send it automatically.
+
+#### Echo is a real compatibility constraint
+
+Stock SIMH's PDP-1 DCS line device exposes terminal mode modifiers
+(`UC`, `7B`, `8B`, `7P`) but no `NOECHO` control. Its receive service
+unconditionally echoes each received character back through TMXR.
+
+That differs materially from ZMachine's DCS2 path. ZMachine turns DCS2 echo
+off while reading and then performs deliberate application-side echo/editing,
+including backspace erasure, line redraw after timed-read interrupts, and
+suppression of bytes it chooses not to store.
+
+Therefore DCS2 echo modification cannot simply become a no-op while leaving
+all of ZMachine's bare echo `tcc` operations intact, or normal input will be
+double-echoed.
+
+Initial options to test:
+
+1. direct stock-SIMH terminal mode: under `SIMH_COMPAT`, suppress ordinary
+   application-side character echo and compensate only where the stock echo
+   is insufficient (for example erase completion and final LF);
+2. browser/proxy mode: let the proxy know which bytes it injected and suppress
+   the stock DCS echo on the network side, preserving ZMachine's own echo
+   semantics;
+3. avoid terminal capability queries initially under `SIMH_COMPAT`, using
+   the existing 24x80 plain-terminal defaults, because stock DCS would echo
+   terminal response escape sequences back to the client.
+
+The direct-terminal path should be judged separately from the browser path;
+do not claim identical DCS2 terminal semantics until it is actually proven.
 
 ### Type 550/555 Microtape
 
@@ -77,13 +106,14 @@ to `zReadKey`.
 1. Add a guarded stock-SIMH DCS path without altering native DCS2 behavior.
 2. Build the unchanged interpreter plus compatibility path with current AM1.
 3. Boot a V3 story first (Zork I is the initial target) and prove terminal
-   connect, terminal query/fallback, command input, output, quit, and a second
-   connection.
+   connect, plain terminal input/output, quit, and a second connection.
 4. Attach a stock-SIMH Type 550/555 image on drive 2 and prove SAVE and
    RESTORE independently.
 5. Add the stock-clock timed-read shim and test a V5 story that actually uses
    timed input.
-6. Only after those bounded proofs, add automated end-to-end tests.
+6. Revisit full terminal capability-query behavior after the basic stock-DCS
+   path is stable.
+7. Only after those bounded proofs, add automated end-to-end tests.
 
 ## Rule
 
