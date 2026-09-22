@@ -136,6 +136,36 @@ Before compatibility code lands it establishes two invariants:
 The first run was started by commit
 `66e3dc406df47b74ea253eefeea0dca714e5aed0`.
 
+## First stock-SIMH boot proof
+
+GitHub Actions run `35776400651`, at lab commit
+`5a01a8f1fec9d6bfc19be3a1123d7bfbe363f8cc`, produced the first successful
+ZMachine gameplay proof on unmodified stock SIMH
+`47b7ddabbe5b548cfc32f2fd45f7bed238ff7921`.
+
+The run:
+
+- built native ZMachine unchanged;
+- built the guarded `SIMH_COMPAT` image;
+- created a stock Type 23 drum image containing the included Zork I V3 story;
+- booted that image on stock SIMH with PDP-1D #48 and the full 64K-word
+  memory space;
+- connected through stock Type 630 DCS on port 2031;
+- printed the Zork I banner and initial West of House description;
+- accepted `LOOK` and printed the West of House description again.
+
+The first successful transcript also exposed the two expected terminal
+differences clearly: stock SIMH echoed each typed character in addition to
+ZMachine's application echo (`LOOK` appeared doubled), and stock Type 630
+delivered CR/LF separately, so the LF became a second empty command.  Those are
+now regression targets, not unknowns.
+
+The earlier "undefined instruction" stop at extended address `174215` was
+not a missing PDP-1D instruction.  The assembly map identified the word as
+`LEM` at `zSessionReset`; the stock-SIMH configuration had accidentally
+copied Adventure's 16K memory setting.  ZMachine occupies banks 0 through 15,
+so the correct stock-SIMH configuration is 64K words.
+
 ## Bring-up order
 
 1. Keep native ZMachine green in the lab CI.
