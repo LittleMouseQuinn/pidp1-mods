@@ -17,7 +17,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential flex bison libpcre3-dev libedit-dev libpng-dev libsdl2-dev
+          sudo apt-get install -y build-essential flex bison netcat-openbsd inetutils-telnet libpcre3-dev libedit-dev libpng-dev libsdl2-dev
           sudo mkdir -p /opt
           sudo ln -s "$GITHUB_WORKSPACE" /opt/pidp1-mods
           mkdir -p "$GITHUB_WORKSPACE/bin"
@@ -57,3 +57,46 @@ jobs:
           grep -q 'return clk_cntr + incr' /tmp/simh/PDP1/pdp1_clk.c
           grep -q '#define rck iot 32' Am1Includes/CLOCK/clockdefs.ah
           echo "Stock SIMH and pidp1-mods both expose RCK as PDP-1 IOT 32; timed-read compatibility can use the stock 1 ms counter."
+
+      - name: Probe Zork I boot on stock SIMH
+        working-directory: FunStuff/ZMachine
+        run: |
+          ./zloader -i simh-drum.img Games/zork1.z3
+          /tmp/simh/BIN/pdp1 zmachine-simh.ini >/tmp/zmachine-simh.log 2>&1 &
+          echo $! >/tmp/zmachine-simh.pid
+
+          for i in $(seq 1 80); do
+            if nc -z 127.0.0.1 2031; then
+              break
+            fi
+            sleep 0.25
+          done
+          nc -z 127.0.0.1 2031
+
+          (
+            sleep 1
+            printf '\r\n'
+            sleep 2
+            printf 'NO\r\n'
+            sleep 3
+            printf 'LOOK\r\n'
+            sleep 3
+          ) | timeout 12 telnet 127.0.0.1 2031 > /tmp/zmachine-session.txt 2>&1 || true
+
+          echo '--- terminal transcript ---'
+          cat /tmp/zmachine-session.txt || true
+          echo '--- simulator log ---'
+          cat /tmp/zmachine-simh.log || true
+
+          kill "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
+          wait "$(cat /tmp/zmachine-simh.pid)" 2>/dev/null || true
+
+      - name: Preserve first-probe transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmachine-stock-simh-first-probe
+          path: |
+            /tmp/zmachine-session.txt
+            /tmp/zmachine-simh.log
+          if-no-files-found: ignore
