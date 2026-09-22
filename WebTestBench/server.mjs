@@ -10,8 +10,10 @@ import { WebSocketServer, WebSocket } from "ws";
 
 const PORT = Number(process.env.PORT || 3000);
 const MAX_SESSIONS = Math.max(1, Number(process.env.MAX_SESSIONS || 3));
-const SESSION_MAX_MS = Math.max(60_000, Number(process.env.SESSION_MAX_MS || 30 * 60_000));
-const IDLE_MAX_MS = Math.max(60_000, Number(process.env.IDLE_MAX_MS || 15 * 60_000));
+// Keep the default comfortably below Vercel Hobby's 300-second function limit.
+// A higher env override is still bounded by the hosting plan's own max duration.
+const SESSION_MAX_MS = Math.max(60_000, Number(process.env.SESSION_MAX_MS || 4 * 60_000));
+const IDLE_MAX_MS = Math.max(60_000, Number(process.env.IDLE_MAX_MS || 3 * 60_000));
 
 const PDP1 = "/app/bin/pdp1";
 const RIM = "/app/assets/adventure-simh.rim";
@@ -136,10 +138,8 @@ class TelnetStripper {
         case "option": {
           const option = byte;
           if (this.command === 251) {
-            // WILL -> DONT
             this.socket.write(Buffer.from([255, 254, option]));
           } else if (this.command === 253) {
-            // DO -> WONT
             this.socket.write(Buffer.from([255, 252, option]));
           }
           this.command = null;
@@ -166,8 +166,6 @@ function normalizeInput(data) {
   const out = [];
 
   for (const byte of source) {
-    // Keep the guest terminal deliberately narrow: printable ASCII plus
-    // CR, BS, TAB, DEL and ^C.  The simulator console itself is never exposed.
     if (
       byte === 3 ||
       byte === 8 ||
@@ -291,10 +289,6 @@ boot ptr
       if (!session.closed) ws.close(1000, "session ended");
     });
 
-    // The compatibility path intentionally consumes one initial character as
-    // the session-start indication because stock SIMH has no guest-visible
-    // TCP connected bit. Send CR only: no trailing LF is left in the shared
-    // Type 630 scanner.
     setTimeout(() => {
       if (!session.closed && session.dcs && !session.dcs.destroyed) {
         session.dcs.write(Buffer.from("\r", "ascii"));
