@@ -88,32 +88,68 @@ That hypothesis must be tested, not assumed.
 
 ### Clock / timed input
 
-This is a real compatibility seam.
+This is a real compatibility seam, but there is a clean stock-SIMH primitive
+to build it from.
 
 pidp1-mods ZMachine uses the BBN countdown interface: arm a 100 ms countdown
 with `cct`, poll `cks`, and test `cctcks`.
 
-Stock SIMH's PDP-1 clock is a free-running counter with periodic interrupts;
-it does not implement the same BBN countdown IOT interface.
+Stock SIMH does not implement that BBN countdown interface. However, both
+pidp1-mods and stock SIMH expose `RCK` as PDP-1 IOT 32. Stock SIMH's
+`pdp1_clk.c` maintains a 0..59999 counter at an effective one millisecond
+per count and returns it through `RCK`.
 
-The preferred compatibility goal is to preserve timed reads using the stock
-clock rather than simply deleting timed input. A `SIMH_COMPAT` timing shim
-can poll elapsed stock-clock counts and present the same tenth-second behavior
-to `zReadKey`.
+That means `SIMH_COMPAT` does not need an instruction-count delay and does
+not need to remove timed input. The compatibility path can preserve
+ZMachine's existing tenth-second model by:
+
+1. recording the current `RCK` value whenever the native path would arm
+   `cct` for 100 ms;
+2. polling `RCK` while waiting for input;
+3. computing elapsed milliseconds, adding 60000 when the subtraction crosses
+   the one-minute counter wrap;
+4. treating elapsed >= 100 as the native `cctcks` event and reusing the
+   existing `zrkTick` / escape-sequence state machine.
+
+This also preserves the important behavior where an ESC sequence gets its own
+100 ms window and where a partially elapsed tenth can be handed from one
+`zReadKey` call to the next. The shim will need one persistent start-count
+word for that running tenth; it must not be an ephemeral local recreated on
+each call.
+
+Stock SIMH's clock device must be enabled in the simulator configuration.
+The native BBN-clock path stays unchanged when `SIMH_COMPAT` is not defined.
+
+## CI baseline
+
+The lab branch has its own GitHub Actions workflow,
+`.github/workflows/zmachine-stock-simh.yml`.
+
+Before compatibility code lands it establishes two invariants:
+
+- current native ZMachine still builds with Bill's current AM1 and produces
+  `zmachine.rim` plus `zloader`;
+- pinned stock SIMH PDP-1
+  `47b7ddabbe5b548cfc32f2fd45f7bed238ff7921` still builds, and the source
+  audit confirms the shared RCK target used by the timed-read plan.
+
+The first run was started by commit
+`66e3dc406df47b74ea253eefeea0dca714e5aed0`.
 
 ## Bring-up order
 
-1. Add a guarded stock-SIMH DCS path without altering native DCS2 behavior.
-2. Build the unchanged interpreter plus compatibility path with current AM1.
-3. Boot a V3 story first (Zork I is the initial target) and prove terminal
+1. Keep native ZMachine green in the lab CI.
+2. Add a guarded stock-SIMH DCS path without altering native DCS2 behavior.
+3. Build the interpreter with `SIMH_COMPAT`.
+4. Boot a V3 story first (Zork I is the initial target) and prove terminal
    connect, plain terminal input/output, quit, and a second connection.
-4. Attach a stock-SIMH Type 550/555 image on drive 2 and prove SAVE and
+5. Attach a stock-SIMH Type 550/555 image on drive 2 and prove SAVE and
    RESTORE independently.
-5. Add the stock-clock timed-read shim and test a V5 story that actually uses
+6. Add the RCK-backed timed-read shim and test a V5 story that actually uses
    timed input.
-6. Revisit full terminal capability-query behavior after the basic stock-DCS
+7. Revisit full terminal capability-query behavior after the basic stock-DCS
    path is stable.
-7. Only after those bounded proofs, add automated end-to-end tests.
+8. Only after those bounded proofs, add automated end-to-end gameplay tests.
 
 ## Rule
 
