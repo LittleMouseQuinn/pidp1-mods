@@ -2287,11 +2287,25 @@ zrkPoll,
     ior seq                          // or a sequence's 100 ms is running
     SKIP_NEXT_IF_AC_NOT_ZERO         // sza i: skip (fallthrough) if timed, or in one
     jmp zrkPoll                         // no-skip: untimed -- poll on
+#ifdef SIMH_COMPAT
+    // Stock SIMH has RCK but not the BBN countdown-timer semantics.  Measure
+    // the same 100 ms tenth against its 0..59999 one-millisecond counter.
+    cli
+    rck
+    lai
+    sub zrkSimhStart
+    SKIP_NEXT_IF_AC_NOT_NEGATIVE
+    add [0d60000]                    // one-minute RCK wrap
+    sub [0d100]
+    SKIP_NEXT_IF_AC_POSITIVE_OR_ZERO // spa: skip (fallthrough) at 100 ms
+    jmp zrkPoll                         // no-skip: still counting
+#else
     cks                              // IO = the check-status word
     lai
     and [cctcks]
     SKIP_NEXT_IF_AC_NOT_ZERO         // sza i: skip (fallthrough) if this tenth ended
     jmp zrkPoll                         // no-skip: still counting
+#endif
     lac seq
     SKIP_NEXT_IF_AC_ZERO             // sza: skip (fallthrough) unless in a sequence
     jmp zrkSeqEnd                       // no-skip: 100 ms, and the sequence unfinished
@@ -2302,8 +2316,14 @@ zrkTick,
     SKIP_NEXT_IF_AC_NOT_ZERO         // sza i: skip (fallthrough) if tenths remain
     jmp zrkOut                          // no-skip: AC = 0 -- the time ran out
 zrkArm,
+#ifdef SIMH_COMPAT
+    cli
+    rck
+    dio zrkSimhStart                // start of this 100 ms tenth
+#else
     lac [0d100]
     cct                              // 100 ms; starting it resets the flag
+#endif
     jmp zrkPoll
 
 zrkGot,
@@ -2393,8 +2413,14 @@ zrkByte,                             // IO = a byte read as itself
     jmp zrkPlainIO                      // no-skip: zReadKeyRaw -- ESC is a byte like any other
     lac [1]
     dac seq                          // an ESC -- a sequence may follow
+#ifdef SIMH_COMPAT
+    cli
+    rck
+    dio zrkSimhStart                // its own 100 ms window
+#else
     lac [0d100]
     cct                              // its 100 ms; starting it resets the flag
+#endif
     jmp zrkPoll
 zrkPlainIO,
     lai
@@ -2541,8 +2567,12 @@ zrkCsiLow,                           // AC = byte - '@', negative
     jmp zrkByte
 
 zrkDrop,
+#ifdef SIMH_COMPAT
+    dzm zrkSimhStart
+#else
     cla
     cct                              // stop the countdown: nothing will read it
+#endif
     lac [0400000]                    // AC negative: the connection dropped
 
 zrkOut,
@@ -2566,6 +2596,7 @@ raw, 0                               // 1 in zReadKeyRaw, no decoding
 seq, 0                               // 0 none, 1 ESC, 2 ESC [, 3 ESC O
     endlocal
 #ifdef SIMH_COMPAT
+zrkSimhStart, 0                       // RCK start of the active 100 ms tenth
 zrkSimhWait, 0
 zrkSimhPending, 0
 zrkSimhPendingValid, 0
