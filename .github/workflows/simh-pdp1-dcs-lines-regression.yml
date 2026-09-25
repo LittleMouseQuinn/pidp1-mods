@@ -48,12 +48,14 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path("/tmp/simh/PDP1/pdp1_dcs.c")
-          s = p.read_bytes()
-          old = b"if (newln < DCS_LINES) {"
-          new = b"if (newln < DCS_NUMLIN) {"
-          if s.count(old) != 1:
-              raise SystemExit(f"expected exactly one candidate condition, found {s.count(old)}")
-          p.write_bytes(s.replace(old, new, 1))
+          lines = p.read_bytes().splitlines(keepends=True)
+          matches = [i for i, line in enumerate(lines) if b"if (newln < DCS_LINES) {" in line]
+          if len(matches) != 1:
+              raise SystemExit(f"expected exactly one candidate line, found {len(matches)}")
+          i = matches[0]
+          eol = b"\\r\\n" if lines[i].endswith(b"\\r\\n") else b"\\n"
+          lines[i] = b"if (newln < DCS_NUMLIN) {" + eol
+          p.write_bytes(b"".join(lines))
           PY
           git -C /tmp/simh diff --check
           printf '1\t1\tPDP1/pdp1_dcs.c\n' >/tmp/expected-numstat.txt
