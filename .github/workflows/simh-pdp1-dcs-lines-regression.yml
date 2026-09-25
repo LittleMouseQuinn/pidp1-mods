@@ -57,7 +57,7 @@ jobs:
           lines[i] = b"if (newln < DCS_NUMLIN) {" + eol
           p.write_bytes(b"".join(lines))
           PY
-          git -C /tmp/simh diff --check
+          git -C /tmp/simh -c core.whitespace=cr-at-eol diff --check
           printf '1\t1\tPDP1/pdp1_dcs.c\n' >/tmp/expected-numstat.txt
           git -C /tmp/simh diff --numstat -- PDP1/pdp1_dcs.c >/tmp/actual-numstat.txt
           diff -u /tmp/expected-numstat.txt /tmp/actual-numstat.txt
