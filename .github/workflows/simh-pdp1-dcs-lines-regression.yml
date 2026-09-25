@@ -53,7 +53,7 @@ jobs:
           if len(matches) != 1:
               raise SystemExit(f"expected exactly one candidate line, found {len(matches)}")
           i = matches[0]
-          eol = b"\\r\\n" if lines[i].endswith(b"\\r\\n") else b"\\n"
+          eol = bytes([13, 10]) if lines[i].endswith(bytes([13, 10])) else bytes([10])
           lines[i] = b"if (newln < DCS_NUMLIN) {" + eol
           p.write_bytes(b"".join(lines))
           PY
