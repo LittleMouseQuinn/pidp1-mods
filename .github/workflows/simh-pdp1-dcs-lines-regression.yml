@@ -43,6 +43,39 @@ jobs:
           EOF
           /tmp/simh/BIN/pdp1 /tmp/dcs-lines.ini | tee /tmp/dcs-lines.log
 
+      - name: Apply candidate fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("/tmp/simh/PDP1/pdp1_dcs.c")
+          s = p.read_text()
+          old = "if (newln < DCS_LINES) {"
+          new = "if (newln < DCS_NUMLIN) {"
+          if s.count(old) != 1:
+              raise SystemExit(f"expected exactly one candidate condition, found {s.count(old)}")
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git -C /tmp/simh diff --check
+          git -C /tmp/simh diff -- PDP1/pdp1_dcs.c
+          make -C /tmp/simh pdp1
+
+      - name: Verify DCS lines re-enable after regrow
+        run: |
+          cat >/tmp/dcs-lines-fixed.ini <<'EOF'
+          set dcs enable
+          set dcs lines=4
+          set dcs lines=8
+          show dcs
+          show dcsl4
+          show dcsl7
+          exit
+          EOF
+          /tmp/simh/BIN/pdp1 /tmp/dcs-lines-fixed.ini | tee /tmp/dcs-lines-fixed.log
+          grep -q 'lines=8' /tmp/dcs-lines-fixed.log
+          grep -q '^DCSL4[[:space:]]\+UC' /tmp/dcs-lines-fixed.log
+          grep -q '^DCSL7[[:space:]]\+UC' /tmp/dcs-lines-fixed.log
+          ! grep -q 'Unit disabled' /tmp/dcs-lines-fixed.log
+
       - name: Preserve probe
         if: always()
         uses: actions/upload-artifact@v4
@@ -51,5 +84,7 @@ jobs:
           path: |
             /tmp/dcs-lines.ini
             /tmp/dcs-lines.log
+            /tmp/dcs-lines-fixed.ini
+            /tmp/dcs-lines-fixed.log
             /tmp/simh-commit.txt
           if-no-files-found: error
