@@ -1,0 +1,55 @@
+name: SIMH PDP-1 DCS line resize probe
+
+on:
+  push:
+    branches:
+      - eve/simh-pdp1-dcs-lines-bug
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out lab branch
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libpcre3-dev libedit-dev libpng-dev libsdl2-dev
+
+      - name: Build current stock SIMH PDP-1
+        run: |
+          git clone https://github.com/simh/simh.git /tmp/simh
+          echo "SIMH_COMMIT=$(git -C /tmp/simh rev-parse HEAD)" | tee /tmp/simh-commit.txt
+          make -C /tmp/simh pdp1
+          test -x /tmp/simh/BIN/pdp1
+
+      - name: Probe DCS line shrink then regrow
+        run: |
+          cat >/tmp/dcs-lines.ini <<'EOF'
+          set dcs enable
+          show dcs
+          show dcsl4
+          set dcs lines=4
+          show dcs
+          show dcsl4
+          set dcs lines=8
+          show dcs
+          show dcsl4
+          show dcsl7
+          exit
+          EOF
+          /tmp/simh/BIN/pdp1 /tmp/dcs-lines.ini | tee /tmp/dcs-lines.log
+
+      - name: Preserve probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdp1-dcs-lines-probe
+          path: |
+            /tmp/dcs-lines.ini
+            /tmp/dcs-lines.log
+            /tmp/simh-commit.txt
+          if-no-files-found: error
