@@ -1,0 +1,89 @@
+name: Adventure stock SIMH compatibility refresh
+
+on:
+  push:
+    branches:
+      - eve/adventure-stock-simh-2026-10-10
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison inetutils-telnet libpcre3-dev libedit-dev libpng-dev libsdl2-dev
+          sudo mkdir -p /opt
+          sudo ln -s "$GITHUB_WORKSPACE" /opt/pidp1-mods
+          mkdir -p "$GITHUB_WORKSPACE/bin"
+
+      - name: Build AM1
+        run: |
+          make -C Tools/AM1 install
+          echo "$GITHUB_WORKSPACE/bin" >> "$GITHUB_PATH"
+
+      - name: Verify native Adventure still assembles
+        run: |
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          make -C FunStuff/Adventure clean
+          make -C FunStuff/Adventure adventure.rim
+          test -s FunStuff/Adventure/adventure.rim
+
+      - name: Build stock SIMH Adventure variant
+        run: |
+          export PATH="$GITHUB_WORKSPACE/bin:$PATH"
+          make -C FunStuff/Adventure clean
+          make -C FunStuff/Adventure adventure-simh
+          test -s FunStuff/Adventure/adventure-simh.rim
+          test -s FunStuff/Adventure/simh-drum.img
+
+      - name: Build stock SIMH PDP-1
+        run: |
+          git clone --depth 1 https://github.com/simh/simh.git /tmp/simh
+          make -C /tmp/simh pdp1
+          test -x /tmp/simh/BIN/pdp1
+
+      - name: Boot and exercise Adventure on stock SIMH
+        working-directory: FunStuff/Adventure
+        run: |
+          /tmp/simh/BIN/pdp1 adventure-simh.ini >/tmp/pdp1.log 2>&1 &
+          echo $! >/tmp/pdp1.pid
+          # Wait for SIMH to report that the DCS listener is live. Do not
+          # probe the port with nc: every probe is a real DCS connection and
+          # perturbs the same guest-visible scanner state this test measures.
+          for i in $(seq 1 80); do
+            if grep -q "Listening on port 2030" /tmp/pdp1.log; then
+              break
+            fi
+            sleep 0.25
+          done
+          grep -q "Listening on port 2030" /tmp/pdp1.log
+
+          # Exercise the same interface a real user does. Stock SIMH's TMXR
+          # listener speaks Telnet; a raw TCP client does not negotiate IAC
+          # options and can feed protocol bytes into the PDP-1 guest.
+          (
+            sleep 1
+            printf '\r\n'
+            sleep 2
+            printf 'NO\r\n'
+            sleep 2
+            printf 'INVENTORY\r\n'
+            sleep 2
+          ) | timeout 10 telnet 127.0.0.1 2030 > /tmp/adventure-session.txt 2>&1 || true
+
+          cat /tmp/adventure-session.txt
+          grep -q "WELCOME TO ADVENTURE" /tmp/adventure-session.txt
+          grep -q "YOU'RE NOT CARRYING ANYTHING" /tmp/adventure-session.txt
+          kill "$(cat /tmp/pdp1.pid)" || true
+          wait "$(cat /tmp/pdp1.pid)" || true
+
+      - name: Show simulator log on failure
+        if: failure()
+        run: |
+          cat /tmp/pdp1.log 2>/dev/null || true
+          cat /tmp/adventure-session.txt 2>/dev/null || true
