@@ -78,3 +78,15 @@ Actions run 35548714848 built the native Adventure target, built the
 an ordinary Telnet CR/LF session. The transcript was character-clean: the
 full greeting printed, `NO` reached the starting-road room, and `INVENTORY`
 returned `YOU'RE NOT CARRYING ANYTHING.`
+
+
+## 10-Oct-2026 current-upstream refresh
+
+The compatibility path was rebased onto pidp1-mods commit
+`fc5d8ebcedd639fa63b078052a48f79d6dbede4f` after the October Adventure,
+AM1, Type 340, Microtape, and drum changes. GitHub Actions run
+`38076307679` rebuilt the current native Adventure target, rebuilt the
+`SIMH_COMPAT` target, built stock SIMH PDP-1 from current master
+(`b0a8d519a2418bfc6b496228de8a8976131a3abc` at verification time), and exercised the live Telnet
+path through the greeting, `NO`, the starting road, and `INVENTORY`.
+All stages passed.
