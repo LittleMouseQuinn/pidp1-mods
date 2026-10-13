@@ -1,0 +1,92 @@
+name: Sketchpad stock SIMH preflight
+
+on:
+  push:
+    branches:
+      - eve/sketchpad-stock-simh-preflight
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out lab branch
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libpcre3-dev libedit-dev libpng-dev libsdl2-dev
+
+      - name: Build current stock SIMH PDP-1
+        run: |
+          git clone --depth 1 https://github.com/simh/simh.git /tmp/simh
+          git -C /tmp/simh rev-parse HEAD | tee /tmp/simh-commit.txt
+          make -C /tmp/simh pdp1
+          test -x /tmp/simh/BIN/pdp1
+
+      - name: Exercise 64K, clock, and Type 550 configuration
+        run: |
+          cat >/tmp/sketchpad-preflight.ini <<'EOF'
+          set cpu pdp1d48
+          set cpu 64k
+          set clk enable
+          set dt enable
+          show cpu
+          show clk
+          show dt
+          exit
+          EOF
+          /tmp/simh/BIN/pdp1 /tmp/sketchpad-preflight.ini | tee /tmp/simh-config.txt
+          ! grep -Eqi 'Invalid argument|Non-existent device|Unknown command|Command not allowed' /tmp/simh-config.txt
+
+      - name: Verify current Type 340 integration gap
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          make = Path("/tmp/simh/makefile").read_text()
+          cpu = Path("/tmp/simh/PDP1/pdp1_cpu.c").read_text()
+          defs = Path("/tmp/simh/PDP1/pdp1_defs.h").read_text()
+          sys = Path("/tmp/simh/PDP1/pdp1_sys.c").read_text()
+          t340 = Path("/tmp/simh/display/type340.c").read_text()
+
+          assert '#define ASIZE           16' in defs
+          assert '65536, NULL, "64K"' in cpu
+          assert 'case 032:' in cpu
+          assert 'MSE", "MLC", "MRD", "MWR", "MRS"' in sys
+
+          start = make.index("PDP1 = ")
+          end = make.index("\n\n", start)
+          pdp1_build = make[start:end]
+          assert "pdp1_dpy.c" in pdp1_build
+          assert "DISPLAY340" not in pdp1_build
+
+          assert "case 015:" not in cpu
+          assert "case 016:" not in cpu
+          assert "case 017:" not in cpu
+          assert "u->DAC = (u->DAC + 1) & 07777;" in t340
+
+          Path("/tmp/preflight-summary.txt").write_text(
+              "Stock SIMH PDP-1 preflight confirmed:\n"
+              "- 16-bit/64K PDP-1 memory available\n"
+              "- PDP-1D clock present\n"
+              "- standard Type 550 IOTs present\n"
+              "- PDP-1 build does not link generic Type 340\n"
+              "- PDP-1 has no IOT handlers for 15/16/17\n"
+              "- generic Type 340 DAC currently wraps at 07777\n"
+          )
+          PY
+          cat /tmp/preflight-summary.txt
+
+      - name: Preserve preflight evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sketchpad-stock-simh-preflight
+          path: |
+            /tmp/simh-commit.txt
+            /tmp/simh-config.txt
+            /tmp/sketchpad-preflight.ini
+            /tmp/preflight-summary.txt
+          if-no-files-found: error
