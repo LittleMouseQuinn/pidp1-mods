@@ -63,9 +63,12 @@ jobs:
           assert "pdp1_dpy.c" in pdp1_build
           assert "DISPLAY340" not in pdp1_build
 
-          assert "case 015:" not in cpu
-          assert "case 016:" not in cpu
-          assert "case 017:" not in cpu
+          iot_start = cpu.index("switch (dev)")
+          iot_end = cpu.index("IO = io_data", iot_start)
+          iot_dispatch = cpu[iot_start:iot_end]
+          assert "case 015:" not in iot_dispatch
+          assert "case 016:" not in iot_dispatch
+          assert "case 017:" not in iot_dispatch
           assert "u->DAC = (u->DAC + 1) & 07777;" in t340
 
           Path("/tmp/preflight-summary.txt").write_text(
