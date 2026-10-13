@@ -1,0 +1,29 @@
+// Stock SIMH Type 630 transmit helper.
+//
+// This file is intentionally included once in every Adventure memory bank
+// when SIMH_COMPAT is enabled. AM1 permits the same symbol name in different
+// banks, so the one-word "jda simhtcb" replacement for TCB resolves to the
+// local copy and costs no more at each call site than native "iot 4022".
+//
+// JDA deposits the caller's AC in simhtcb and places the return address in AC.
+// The routine restores the saved AC before returning. IO retains the byte that
+// was transmitted, matching the useful register behavior of the native TCB.
+
+simhtcb, 0
+local rtn, wait
+     dap rtn
+     // TCB must see the caller's outgoing byte in IO. Do not CLI until
+     // after the transmit has been initiated.
+     iot 4022
+wait,
+     cli
+     cks
+     lai
+     and [SIMH_DCS_READY
+     sza i
+     jmp wait
+     cli
+     rchr
+     lac simhtcb
+rtn, jmp .
+endloc
