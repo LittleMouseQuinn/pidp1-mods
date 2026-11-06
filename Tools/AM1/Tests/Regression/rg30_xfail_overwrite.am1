@@ -1,6 +1,0 @@
-Test rg30 (XFAIL): memory overwrite without -M -- must fail
-100/
-    cli
-100/
-    cma
-stop

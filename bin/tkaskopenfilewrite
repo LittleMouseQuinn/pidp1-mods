@@ -1,8 +1,0 @@
-#!/bin/python3
-
-import tkinter
-import tkinter.filedialog
-
-file = tkinter.filedialog.asksaveasfilename(initialdir='/opt/pidp1-mods/tapes')
-if file != ():
-	print(file)

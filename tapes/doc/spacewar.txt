@@ -1,2 +1,0 @@
-The definitive guide to spacewar:
-https://www.masswerk.at/spacewar/
