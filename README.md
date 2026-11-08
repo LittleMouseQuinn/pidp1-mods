@@ -1,63 +1,84 @@
-# Eve Quinn: experimental SHRDLU guest compatibility for SIMH
+# Eve Quinn: experimental PDP-1 SHRDLU Type 630/SIMH patch, November 8, 2026
 
-**Source base:** Bill Ezell, wjenh/pidp1-mods, `51bdc2d0cd09cfa95c5d66d3bf14dd90bf2acfb9` (2026-11-05).
-**Patch result:** local Eve source commit `2fef2b767dc8d4c89b7d78046a829b106c0c64c1`.
-**Format:** a single reviewable eight-file Git patch; generated binaries and private data are excluded.
+This is a review-only patch against Bill Ezell's `wjenh/pidp1-mods`
+**ec2cee7cc87dd9ab5b012d4b05cf248df66a30c2**, the November 8
+major-cleanup source head. The tested local source branch ends at
+**d416d62**. No generated binaries, drum images, credentials, or private
+files are included.
 
-This patch adds a guarded SIMH Type 630 DCS compatibility mode to PDP-1
-SHRDLU without removing the original DCS2 build. It adds a byte-serialized
-DCS transmitter and an automated real TCP test for the actual guest code.
-It also provides an **opt-in** `FASTMOTION` build that uses Bill's existing
-source flag to jump the hand to a target without pacing every intermediate
-step. The normal animated build is unchanged and remains available.
+## What changed
 
-## Verification, on 2026-11-05
+* Guarded `SIMH_COMPAT` mode uses the stock Type 630 interface for
+  PDP-1 SHRDLU while retaining the existing native DCS2 build by default.
+* A corrected single-line Type 630 TX helper uses **TCC** (transmit
+  and scanner-continue) instead of **TCB** (transmit only).
+* New optional `simh-fastmotion` and `simh-paced-probe` Makefile
+  targets plus guest TCP regression scripts. The paced probe keeps the
+  ordinary `leg` and `handShow` code but takes coarse 512-pixel steps.
+* Detailed interface and verification notes in
+  `FunStuff/Shrdlu/SHRDLU-SIMH.md`.
 
-* Normal SIMH build: all 13 drum overlays validated by `ovlload -c`.
-* Normal guest TCP suite: **4/4 PASS**, including banner, `/WORD BLOCK`,
-  `/ROOM`, and `ARE THERE ANY BLOCKS?` with the five-block reply.
-* Fast-motion SIMH build: separate RIM/overlay/drum pair, **13/13** overlays
-  current; automated guest TCP suite **5/5 PASS** on two independent runs.
-  The extra command is `PICK UP A BIG RED BLOCK.`; it parsed and returned
-  `OK.` followed by the guest prompt. An additional guest snapshot showed
-  the hand-position pending flag cleared after the fast operation.
-* The original DCS2 guest assembled successfully when given the correct
-  `Am1Includes` path.
+## Why the TCC correction matters
 
-**Requirements and limitations:** These runs require Eve's **experimental**
-Type 340/CCT PDP-1 SIMH host adapter (local branch
-`eve/type340-dac-width`, commit `f963dea`), not unmodified stock SIMH.
-Normal paced hand animation is **not yet validated**. In a bounded diagnostic
-the hand waited in `handShow` with a position pending and due one guest
-millisecond later; display frames continued. This may reflect timing/
-throughput, not necessarily deadlock. Neither live SDL/light-pen behavior,
-the complete SHRDLU demonstration, large traffic nor save/restoration
-are covered. This is an experimental review package, **not a complete port**.
+Bill's original Type 630 combines scanner readiness from terminal input
+and output completion. In a previous live PDP-1 motion test, the guest
+received an old scanner-ready indication just before it sent the first
+response byte `O`. With `TCB`, the next `K` transmission overwrote the
+pending `O` before SIMH's line service could send it. The exact
+regression response was `K.\n*\n` instead of `OK.\n*\n`. A separately
+instrumented host confirmed TCB for `O` and no service before the next
+TCB for `K`. The TCC update clears/continues the scanner correctly in
+this **single-line** shim and the regression now passes.
 
-The PDP-1 guest binaries in these tests were assembled using an existing
-earlier AM1 executable. The newly updated Nov5 AM1 source could not be
-rebuilt on the test host because `bison` and `flex` are absent; do not
-construe these tests as validation of the new compiler version.
+This code has **not** been verified for multiple DCS lines or arbitrary
+terminal typeahead.
 
-## Apply and test
+## Verified November 8 results
 
-Starting from a clean checkout of `51bdc2d`:
+The source patch was replayed onto `ec2cee7` without conflicts, and
+tested using the **freshly rebuilt** experimental Type 340 SIMH host
+source at `f963dea32000956d87a5b910c6ce3760ad325c74` with a clean
+tracked tree and passing simulator register sanity check:
+
+* Normal SIMH guest: 4/4 TCP dialogue/overlay checks pass.
+* Opt-in FASTMOTION guest: 5/5 TCP checks pass, including a complete
+  `PICK UP A BIG RED BLOCK.` reply.
+* Opt-in coarse-paced guest: 5/5 pass, including the complete
+  `OK.` reply that failed with TCB.
+* All **13** drum overlays were verified current for each SIMH build.
+* Original native DCS2 guest still assembles.
+
+These tests used an existing earlier AM1 executable. The **new**
+upstream AM1 source was not rebuilt on this host due to missing
+`bison` and `flex`; no compiler-version validation is claimed.
+
+## Apply and run
+
+Starting from a clean copy of Bill's `ec2cee7` source:
 
 ```sh
-git apply --check shrdlu-simh.patch
-git apply shrdlu-simh.patch
-# Build am1 and ovlload separately (tools/paths are site-specific).
+git apply --check shrdlu-simh-nov08.patch
+git apply shrdlu-simh-nov08.patch
 cd FunStuff/Shrdlu/Shrdlu
 make simh AM1=/path/to/am1 OVLLOAD=/path/to/ovlload
 make simh-fastmotion AM1=/path/to/am1 OVLLOAD=/path/to/ovlload
+make simh-paced-probe AM1=/path/to/am1 OVLLOAD=/path/to/ovlload
 cd ../../..
-python3 tests/run_shrdlu_simh_smoke.py --simh /path/to/experimental-SIMH/BIN/pdp1
-python3 tests/run_shrdlu_simh_smoke.py --simh /path/to/experimental-SIMH/BIN/pdp1 \
-  --prefix shrdlu-simh-fast --motion --timeout 35
+python3 tests/run_shrdlu_simh_smoke.py --simh /path/to/EXPERIMENTAL-SIMH/BIN/pdp1
+python3 tests/run_shrdlu_simh_smoke.py --simh /path/to/EXPERIMENTAL-SIMH/BIN/pdp1 --prefix shrdlu-simh-fast --motion --timeout 35
+python3 tests/run_shrdlu_simh_smoke.py --simh /path/to/EXPERIMENTAL-SIMH/BIN/pdp1 --prefix shrdlu-simh-paced --motion --timeout 82
 ```
 
-The patch also contains `tests/diag_shrdlu_motion.py` to inspect guest
-motion state after a bounded run; please see
-`FunStuff/Shrdlu/SHRDLU-SIMH.md` for the full notes.
+## Strict limitations
+
+**This is not a complete port or an integration request.** The separate
+experimental SIMH Type 340 adapter is required; stock SIMH is not enough
+for the graphics path. Full original-step hand motion, SDL user interaction,
+and mouse prediction at high movement speeds have **not** been validated.
+Bill's current Type 340 docs say `DRP` and `DRC` share central motion
+prediction; the experimental SIMH host does not implement that pipeline.
+Bill's November 8 email clarified that t30dpy sends pen positions
+asynchronously, with a roughly 8 ms client check interval; this guest
+patch does not model that async input timing or test real human feedback.
 
 Eve Quinn / LittleMouseQuinn

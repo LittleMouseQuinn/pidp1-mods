@@ -1,0 +1,628 @@
+diff --git a/FunStuff/Shrdlu/SHRDLU-SIMH.md b/FunStuff/Shrdlu/SHRDLU-SIMH.md
+new file mode 100644
+index 0000000..b92bfcc
+--- /dev/null
++++ b/FunStuff/Shrdlu/SHRDLU-SIMH.md
+@@ -0,0 +1,217 @@
++# SHRDLU on the SIMH PDP-1: experimental compatibility prototype
++
++Eve Quinn / LittleMouseQuinn, 2026-11-02; updated 2026-11-05.
++
++This is an **experimental** compatibility path for Bill Ezell's PDP-1
++SHRDLU. It changes the guest-side DCS2 calls to use SIMH's original Type
++630 character IOTs, preserving the original DCS2 build behind the
++`SIMH_COMPAT` switch.
++
++**Important:** An unmodified current SIMH PDP-1 does **not** provide
++the required Type 340 host adapter. The 2026-11-02 tests used Eve's separate
++local experimental SIMH branch `eve/type340-dac-width`, commit `f963dea`,
++which supplies Type 340 display IOTs, single-channel PDP-1D sequence breaks,
++full-width display DMA, and a partial BBN clock countdown extension.
++This is not yet a fully upstreamable stock-SIMH SHRDLU port.
++
++## Reproduce the verified text/dictionary/overlay test
++
++The November 5 regression was run against `wjenh/pidp1-mods` commit
++`b4f6f40` (November 4 Sketchpad, SHRDLU color labels and Life release),
++with this shim applied as a separate local source commit. The earlier
++November 2 test used `caa0c76` (the initial SHRDLU release).
++Build `am1` and `ovlload` from the checked-out repository first.
++
++From `FunStuff/Shrdlu/Shrdlu`, run:
++
++```sh
++make simh AM1=/path/to/am1 OVLLOAD=/path/to/ovlload
++```
++
++The target assembles `shrdlu-simh.rim`, writes its matching
++`shrdlu-simh.ovl` and `shrdlu-simh-drum.img`, and runs `ovlload -c`
++to verify that all 13 overlays match. The original `make` target
++can still produce native DCS2 `shrdlu.rim` from the same source.
++
++From repository root:
++
++```sh
++python3 tests/run_shrdlu_simh_smoke.py --simh /path/to/experimental-SIMH/BIN/pdp1
++```
++
++The script starts an isolated PDP-1D48/64K simulation, enables single-channel
++SBS and the experimental Type 340 and clock, attaches the overlay drum and
++Type 630 DCS, and uses a real TCP session. It checks:
++
++1. the full SHRDLU server banner;
++2. `/WORD BLOCK` => `BLOCK: NOUN NS`, with **single**, not duplicate, echo;
++3. `/ROOM` => arena statistics (loads the commands overlay);
++4. `ARE THERE ANY BLOCKS?` => the correct five-block answer, with a
++   completed response and prompt.
++
++The reported answer exactly matched the standalone Modern C reference on
++2026-11-02, including enumeration and punctuation, after normalizing Telnet
++line endings. This is a limited one-question comparison, not a general
++equivalence proof.
++
++### Device compatibility details
++
++- In stock Type 630, `RCC` reads a character **and unlocks the scanner**.
++  DCS2 `RCH` does not have the same semantics. The SIMH shim substitutes
++  the former at the two reader call sites.
++- The first character received is a session-start indication because stock
++  SIMH does not expose DCS2's TCP-connection-status bit to the guest.
++- Stock Type 630 echoes received bytes itself, so the DCS2 guest-side echo
++  is omitted under `SIMH_COMPAT`.
++- The Type 630 scanner status is shared by input-ready and transmit-complete.
++  A single shared transmit helper polls the completion and acknowledges it
++  before another character is sent. It is called across the PDP-1 banks through
++  a full-address `JSP I`. Current callers do not depend on preserving AC.
++- This is presently a single-connection, one-line smoke path. DCS2's socket
++  negotiation, close/rebind behavior, Telnet-option fidelity and large-volume
++  traffic are not proven equivalent.
++
++### Graphics and remaining failures
++
++The genuine PDP-1 program rendered a 1024x1024 Type 340 blocks-world image
++through a separately instrumented *headless* SIMH backend. In the November 2
++SIMH_COMPAT build, the captured PGM held **10,035 lit pixels** and the display
++reported 121,396 stop/edge interrupts in a bounded three-second run.
++This verifies real display-list execution, **not** a live SDL graphics
++window, mouse, phosphor aging, or interactive light pen.
++
++The motion command `PICK UP A BIG RED BLOCK.` was correctly read and echoed
++as words, but **did not produce the final answer** during a 28-second bounded
++test. The interrupted PC was at `005170`, the `handShow` loop waiting for
++`hpPend` to be cleared by display-frame/hand application processing.
++Timer and display scheduling remain under investigation.
++
++Other unverified areas include the full 42-sentence demonstration, all
++overlay load/eviction paths, actual hand motion, restart after connection
++loss, and save/state fidelity. Do not call this a complete port yet.
++
++
++### Bounded hand-motion diagnostic
++
++The original PDP-1 program supports `FASTMOTION`: it displays the final
++hand position immediately instead of performing each intermediate paced
++step. That is useful for separating language, planning and display-hand
++updates from the still-unverified timing of normal animation.
++
++From `FunStuff/Shrdlu/Shrdlu`, build the **separate** variant:
++
++```sh
++make simh-fastmotion AM1=/path/to/am1 OVLLOAD=/path/to/ovlload
++```
++
++From the repository root:
++
++```sh
++python3 tests/run_shrdlu_simh_smoke.py --simh /path/to/experimental-SIMH/BIN/pdp1
++  --prefix shrdlu-simh-fast --motion --timeout 35
++```
++
++The motion assertion requires the PDP-1 guest to parse
++`PICK UP A BIG RED BLOCK.` and return `OK.` with its prompt. It does not
++prove the graphic intermediate frames or light-pen interaction, and needs
++the same *experimental* Type 340 adapter as the ordinary smoke test.
++The standard `simh` build and its uncompromised paced path remain separate.
++
++
++On November 5, this fast-motion variant passed all five test cases twice.
++The normal paced-motion build still passed the original four text/overlay
++cases, but its hand movement was not completed in a bounded probe.
++A guest-state diagnostic, `tests/diag_shrdlu_motion.py`, can capture the
++PDP-1 state after attempting the paced move:
++
++```sh
++python3 tests/diag_shrdlu_motion.py --simh /path/to/experimental-SIMH/BIN/pdp1 \
++  --input-timeout 45 --post-words 30
++```
++
++In the November 5 normal-motion probe the command parsed but stopped
++inside `handShow`, with `hpPend=1` and `hpDue` one guest millisecond ahead
++of `clT`. Display frame count was advancing. This is evidence of a possible
++pacing or clock throughput issue, **not proof of a permanent deadlock**.
++The complete normal animation and real SDL display remain open.
++
++
++### November 8: Type 630 completion race and a bounded paced-motion probe
++
++Bill clarified in an email that the original t30dpy mouse updates are sent
++asynchronously at approximately 8 ms intervals, independently of guest polling.
++The blincolnlights `src/blincolnlights/pdp1/display.c` worker uses a
++nonblocking display socket, retains the last pen position until lifted,
++and applies motion filters. These observations concern the original display
++pipeline; this headless SIMH test does **not** reproduce its asynchronous
++mouse socket or certify prediction fidelity.
++
++A separate issue emerged on the guest terminal path. With a hand-movement
++test using larger screen-space steps, the PDP-1 sometimes returned `K.`
++instead of `OK.` even though it reached its prompt. Instrumenting both
++SIMH Type 630's TCB IOT entry and its delayed line service showed:
++
++- After the long motion, the guest issued a TCB for `O`, while an old
++  scanner-ready flag was present. The following TCB for `K` occurred before
++  any completion service for `O`, overwriting the same one-line transmit
++  buffer.
++- This guest shim now uses Type 630 **TCC** to send and release the scanner
++  lock together, then waits for a **new** completion before sending the next
++  byte. The distinction matters because Type 630 shares its receiver and
++  transmitter ready flag. This implementation is intentionally limited to a
++  **single DCS line**; multi-line output must be designed and tested separately.
++
++To reproduce the bounded path that revealed the bug without modifying
++the ordinary hand animation, use the optional **coarse paced** build:
++
++```sh
++cd FunStuff/Shrdlu/Shrdlu
++make simh-paced-probe AM1=/path/to/am1 OVLLOAD=/path/to/ovlload
++cd ../../..
++python3 tests/run_shrdlu_simh_smoke.py \
++  --simh /path/to/experimental-SIMH/BIN/pdp1 \
++  --prefix shrdlu-simh-paced --motion --timeout 80
++```
++
++`simh-paced-probe` exercises the original paced `leg`/hand posting path
++with 512-pixel steps. It is **not** `FASTMOTION`, but it is also not a
++fidelity test of smooth hand movement. The normal build retains its original
++step sizes. The motion test insists on the exact complete `OK.` and prompt:
++a truncated `K.` reply is a failure, even if the position was applied.
++
++The Type 630 IOT traces were produced in a separate local, **unpublished**
++debug-instrumented host worktree; no temporary host tracing code is required
++by this guest change. This result should be independently reproduced against
++the uninstrumented experimental SIMH binary before considering integration.
++
++### November 8 current-upstream reproducibility checkpoint
++
++The source patch and Type 630 first-byte correction above were cherry-picked
++without conflicts onto Bill's updated `pidp1-mods` base
++`ec2cee7cc87dd9ab5b012d4b05cf248df66a30c2` (November 8, 2026).
++The eight changed paths are guest-side source, Makefile, tests, and this
++README only. No generated RIM, OVL, drum, or instrumented host binaries are
++included in the patch.
++
++For this checkpoint the independent experimental PDP-1 Type 340 SIMH host
++source, `f963dea32000956d87a5b910c6ce3760ad325c74`, was freshly rebuilt
++from a clean tracked tree on November 8 and passed SIMH's internal register
++sanity check. With that resulting host binary, the new guest source produced:
++
++- normal stock-Type630-compat guest: **4/4** live DCS TCP assertions passed;
++- opt-in FASTMOTION guest: **5/5**, including complete pick-up reply;
++- opt-in coarse paced guest: **5/5**, including complete `OK.\n*\n`;
++- all **13** drum overlays checked as current in **each** SIMH build;
++- original non-`SIMH_COMPAT` DCS2 guest assembled successfully.
++
++These smoke tests use an existing earlier AM1 executable. The current
++upstream AM1 assembler source was not rebuilt here because the test host
++lacks `bison` and `flex`; no claim is made about its new compiler changes.
++
++Bill's current `Docs/UsingType340Display.md` says `DRP` is deprecated and
++identical to `DRC`, with motion prediction performed in the emulator's
++central display logic. Our experimental SIMH host does **not** yet implement
++that prediction pipeline. An asynchronous real mouse stream, default-step
++paced motion, and human tracking at high speed are **not** validated by these
++headless tests. None of these results is an upstream merge or a complete
++visual/interactive port.
+diff --git a/FunStuff/Shrdlu/Shrdlu/Makefile b/FunStuff/Shrdlu/Shrdlu/Makefile
+index 1712ae8..9fc7738 100644
+--- a/FunStuff/Shrdlu/Shrdlu/Makefile
++++ b/FunStuff/Shrdlu/Shrdlu/Makefile
+@@ -3,10 +3,48 @@ shrdlu.rim: shrdlu.am1 shrdlu.ah cache.ac dbreak.ac debug.ac dlist.ac hand.ac hi
+ 		atoms.ac db.ac blocks.ac natives.ac engine.ac events.ac goals.ac theorems.ac share.ac \
+ 		lexicon.ac reader.ac parse.ac print.ac cmds.ac room.ac tree.ac sm.ac read.ac keep.ac \
+ 		semantics.ac pgm.ac pgsys.ac collect.ac hooks.ac drop.ac eval.ac planner.ac plcold.ac evlisp.ac r12.ac learn.ac tables.ac hotget.ac labels.ac
+-	am1 shrdlu.am1
++	$(AM1) -I $(SIMH_INCLUDES) shrdlu.am1
+ 
+ install: shrdlu.rim
+ 	cp shrdlu.rim shrdlu.ovl ..
+ 
+ clean:
+-	rm -f shrdlu.rim shrdlu.ovl >/dev/null 2>&1
++	rm -f shrdlu.rim shrdlu.ovl shrdlu-simh.rim shrdlu-simh.ovl shrdlu-simh-drum.img shrdlu-simh-fast.rim shrdlu-simh-fast.ovl shrdlu-simh-fast-drum.img shrdlu-simh-paced.rim shrdlu-simh-paced.ovl shrdlu-simh-paced-drum.img >/dev/null 2>&1
++
++# Experimental stock-SIMH build. The normal DCS2 RIM remains separately
++# buildable. The generated overlay image is local, never the physical drum.
++AM1 ?= am1
++OVLLOAD ?= ovlload
++SIMH_INCLUDES ?= ../../../Am1Includes
++
++.PHONY: simh
++simh:
++	$(AM1) -I $(SIMH_INCLUDES) -DSIMH_COMPAT shrdlu.am1
++	mv shrdlu.rim shrdlu-simh.rim
++	mv shrdlu.ovl shrdlu-simh.ovl
++	$(OVLLOAD) -n -i shrdlu-simh-drum.img shrdlu-simh.ovl
++	$(OVLLOAD) -c -i shrdlu-simh-drum.img shrdlu-simh.ovl
++
++
++# Optional fast-motion diagnostic build. This uses SHRDLU's original
++# FASTMOTION flag, so a move completes without intermediate hand steps.
++# Do not confuse this path with verifying paced Type 340 animation.
++.PHONY: simh-fastmotion
++simh-fastmotion:
++	$(AM1) -I $(SIMH_INCLUDES) -DSIMH_COMPAT -DFASTMOTION shrdlu.am1
++	mv shrdlu.rim shrdlu-simh-fast.rim
++	mv shrdlu.ovl shrdlu-simh-fast.ovl
++	$(OVLLOAD) -n -i shrdlu-simh-fast-drum.img shrdlu-simh-fast.ovl
++	$(OVLLOAD) -c -i shrdlu-simh-fast-drum.img shrdlu-simh-fast.ovl
++
++
++# Diagnostic only: actual paced hand steps, but coarse 512-pixel increments,
++# to make the long asynchronous Type 630 output path testable in bounded time.
++# This does NOT replace normal PDP-1 hand motion or the fast-motion variant.
++.PHONY: simh-paced-probe
++simh-paced-probe:
++	$(AM1) -I $(SIMH_INCLUDES) -DSIMH_COMPAT -DSTEPX=01000 -DSTEPY=01000 shrdlu.am1
++	mv shrdlu.rim shrdlu-simh-paced.rim
++	mv shrdlu.ovl shrdlu-simh-paced.ovl
++	$(OVLLOAD) -n -i shrdlu-simh-paced-drum.img shrdlu-simh-paced.ovl
++	$(OVLLOAD) -c -i shrdlu-simh-paced-drum.img shrdlu-simh-paced.ovl
+diff --git a/FunStuff/Shrdlu/Shrdlu/reader.ac b/FunStuff/Shrdlu/Shrdlu/reader.ac
+index 410e9ac..cdf7415 100644
+--- a/FunStuff/Shrdlu/Shrdlu/reader.ac
++++ b/FunStuff/Shrdlu/Shrdlu/reader.ac
+@@ -107,7 +107,9 @@ loop, cli
+     jmp out                 // negative, so no character after all
+     lai
+     and [0177]
++#ifndef SIMH_COMPAT
+     jda rdEcho
++#endif
+     jda rdChar
+     lac i [tReady:0]
+     sza i
+diff --git a/FunStuff/Shrdlu/Shrdlu/shrdlu.am1 b/FunStuff/Shrdlu/Shrdlu/shrdlu.am1
+index ba86725..02085af 100644
+--- a/FunStuff/Shrdlu/Shrdlu/shrdlu.am1
++++ b/FunStuff/Shrdlu/Shrdlu/shrdlu.am1
+@@ -99,6 +99,9 @@ SHRDLU
+ 
+ #include <TYPE340/type340alt.ah>
+ #include <DCS/dcs2defs.ah>
++#ifdef SIMH_COMPAT
++#include "simh-dcs.ah"
++#endif
+ #include <CLOCK/clockdefs.ah>
+ #include "shrdlu.ah"
+ 
+@@ -146,6 +149,9 @@ bank 0
+ #include "cache.ac"
+ #include "hand.ac"
+ #include "term.ac"
++#ifdef SIMH_COMPAT
++#include "simhshrdlu.ac"
++#endif
+ #include "debug.ac"
+ 
+ constants
+diff --git a/FunStuff/Shrdlu/Shrdlu/simh-dcs.ah b/FunStuff/Shrdlu/Shrdlu/simh-dcs.ah
+new file mode 100644
+index 0000000..01af65d
+--- /dev/null
++++ b/FunStuff/Shrdlu/Shrdlu/simh-dcs.ah
+@@ -0,0 +1,26 @@
++// Experimental PDP-1 stock-SIMH Type 630 compatibility for SHRDLU.
++// Keep DCS2's symbols, override only the operations and status bits used here.
++// Stock Type 630 echoes received bytes itself and has no TCP-connect status.
++// The first incoming byte starts a session and is consumed by ROC.
++#ifndef SHRDLU_SIMH_DCS_AH
++#define SHRDLU_SIMH_DCS_AH
++#define SIMH_DCS_READY 000002
++#undef rch
++#define rch iot 1022     // RCC reads and unlocks SIMH's scanner in one word
++#undef rcs
++#define rcs cks
++#undef roc
++#define roc rchr        // consume the first receive/status event
++#undef tcb
++#define tcb jsp i [simhtcb:0]
++#undef scb
++#define scb nop
++#undef dsfcon
++#define dsfcon SIMH_DCS_READY
++#undef dsfrdy
++#define dsfrdy SIMH_DCS_READY
++#undef dsfcls
++#define dsfcls 000000
++#undef dseflf
++#define dseflf 000000
++#endif
+diff --git a/FunStuff/Shrdlu/Shrdlu/simhshrdlu.ac b/FunStuff/Shrdlu/Shrdlu/simhshrdlu.ac
+new file mode 100644
+index 0000000..ec6a4b2
+--- /dev/null
++++ b/FunStuff/Shrdlu/Shrdlu/simhshrdlu.ac
+@@ -0,0 +1,22 @@
++// Experimental stock-SIMH Type 630 serialized transmit helper.
++// Called with JSP from any bank; IO holds the byte to send.
++// All current SHRDLU TCB call sites discard AC after transmitting.
++simhtcb,
++    local ret, wait
++    dac ret
++    // Type 630 TCC sends on the selected scanner line AND releases its
++    // scanner lock. TCB alone can leave an older IOS_DCS ready bit latched
++    // across a long hand animation; the next TCB then overwrites the
++    // still-pending first character. This single-line shim uses scan=send.
++    tcc
++wait, cli
++    cks
++    lai
++    and [SIMH_DCS_READY]
++    sza i
++    jmp wait
++    cli
++    rchr
++    jmp i ret
++ret, 0
++    endloc
+diff --git a/tests/diag_shrdlu_motion.py b/tests/diag_shrdlu_motion.py
+new file mode 100755
+index 0000000..47255a1
+--- /dev/null
++++ b/tests/diag_shrdlu_motion.py
+@@ -0,0 +1,102 @@
++#!/usr/bin/env python3
++"""Bounded guest-state probe of PDP-1 SHRDLU motion; experimental SIMH only.
++
++The addresses match the Nov4 b4f6f40 source: regenerate symbol addresses if
++using a different guest build. The probe is not a passing gameplay test.
++"""
++import argparse
++import os
++from pathlib import Path
++import select
++import signal
++import socket
++import subprocess
++import tempfile
++import time
++
++ROOT = Path(__file__).resolve().parents[1]
++PROGRAM = ROOT / 'FunStuff' / 'Shrdlu' / 'Shrdlu'
++DUMP = {'hpPend': '005270', 'hpDue': '005274', 'hpPaced': '005273',
++        'dpGrp': '005256', 'dpFrames': '005257', 'dpEdges': '005262',
++        'dpSwap': '005255', 'dpFront': '005254', 'clT': '005260'}
++
++def recv_until(sock, marker, limit):
++    b=bytearray(); end=time.monotonic()+limit
++    while time.monotonic()<end:
++        ready, _, _=select.select([sock],[],[],min(.25,max(0,end-time.monotonic())))
++        if ready:
++            piece=sock.recv(65536)
++            if not piece: break
++            b.extend(piece)
++            if marker in b: break
++    return bytes(b)
++
++def main():
++    ap=argparse.ArgumentParser(description=__doc__)
++    ap.add_argument('--simh',type=Path,required=True)
++    ap.add_argument('--program',type=Path,default=PROGRAM, help='SHRDLU build directory')
++    ap.add_argument('--input-timeout',type=float,default=45)
++    ap.add_argument('--post-words',type=float,default=30)
++    a=ap.parse_args()
++    program=a.program.resolve()
++    assert (program / 'shrdlu-simh.rim').is_file()
++    assert (program / 'shrdlu-simh-drum.img').is_file()
++    with socket.socket() as s:
++        s.bind(('127.0.0.1',0));port=s.getsockname()[1]
++    commands='\n'.join('examine '+addr for addr in DUMP.values())
++    cfg=f'''set cpu pdp1d48
++set cpu 64k
++set cpu nosbs
++set t340 enabled
++set clk enabled
++set drp enabled
++attach drp {program / 'shrdlu-simh-drum.img'}
++set dcs enabled
++set dcs lines=1
++set dcsl0 8b
++attach dcs {port}
++attach ptr {program / 'shrdlu-simh.rim'}
++boot ptr
++{commands}
++show clk
++show t340
++exit
++'''
++    with tempfile.TemporaryDirectory() as tmp:
++        ini=Path(tmp)/'run.ini';ini.write_text(cfg)
++        log=Path(tmp)/'console.log'
++        with open(log,'w+b') as out:
++            proc=subprocess.Popen([str(a.simh.resolve()),str(ini)],cwd=program,
++                                  stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,
++                                  start_new_session=True)
++            s=None
++            try:
++                for _ in range(120):
++                    if proc.poll() is not None:raise RuntimeError('SIMH died early')
++                    try:s=socket.create_connection(('127.0.0.1',port),timeout=.3);break
++                    except OSError:time.sleep(.1)
++                if s is None:raise RuntimeError('DCS did not listen')
++                s.sendall(b'\r')
++                banner=recv_until(s,b'\n*\n',12)
++                print('BANNER:',banner[-140:].decode('latin1','replace').strip())
++                s.sendall(b'PICK UP A BIG RED BLOCK.\r\n')
++                reply=recv_until(s,b'WORDS: PICK UP A BIG RED BLOCK .',a.input_timeout)
++                parsed=b'WORDS: PICK UP A BIG RED BLOCK .' in reply
++                print('PARSED:',parsed,'TAIL:',reply[-420:].decode('latin1','replace').strip())
++                if parsed:
++                    tail=recv_until(s,b'\n*\n',a.post_words)
++                    print('MOTION FINISHED:',b'\n*\n' in tail,'TAIL:',tail[-520:].decode('latin1','replace').strip())
++            finally:
++                if s:s.close()
++                if proc.poll() is None:
++                    os.killpg(proc.pid,signal.SIGINT)
++                    try:proc.wait(timeout=4)
++                    except subprocess.TimeoutExpired:
++                        os.killpg(proc.pid,signal.SIGTERM)
++                        try:proc.wait(timeout=3)
++                        except subprocess.TimeoutExpired:
++                            os.killpg(proc.pid,signal.SIGKILL);proc.wait()
++            out.seek(0)
++            print('SIMH STATE:\n'+out.read()[-4500:].decode('latin1','replace'))
++
++if __name__=='__main__':main()
+diff --git a/tests/run_shrdlu_simh_smoke.py b/tests/run_shrdlu_simh_smoke.py
+new file mode 100755
+index 0000000..fa0521c
+--- /dev/null
++++ b/tests/run_shrdlu_simh_smoke.py
+@@ -0,0 +1,138 @@
++#!/usr/bin/env python3
++"""End-to-end PDP-1 SHRDLU stock-SIMH text/overlay regression. Python stdlib only."""
++import argparse
++from pathlib import Path
++import os
++import select
++import signal
++import socket
++import subprocess
++import sys
++import tempfile
++import time
++
++PROGRAM = Path(__file__).resolve().parents[1] / "FunStuff" / "Shrdlu" / "Shrdlu"
++
++
++def read_until_mark(sock, seconds):
++    data = bytearray()
++    end = time.monotonic() + seconds
++    while time.monotonic() < end and len(data) < 65536:
++        rd, _, _ = select.select([sock], [], [], min(0.2, max(0.0, end - time.monotonic())))
++        if not rd:
++            continue
++        try:
++            chunk = sock.recv(8192)
++        except BlockingIOError:
++            continue
++        if not chunk:
++            break
++        data.extend(chunk)
++        if b"\n*\n" in data:
++            return bytes(data)
++    raise AssertionError("SHRDLU did not finish its reply; tail=" + repr(bytes(data[-500:])))
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--simh", required=True, type=Path, help="PDP-1 SIMH binary with experimental Type 340 and CCT")
++    parser.add_argument("--timeout", type=float, default=18.0)
++    parser.add_argument("--prefix", choices=("shrdlu-simh", "shrdlu-simh-fast", "shrdlu-simh-paced"), default="shrdlu-simh",
++                        help="Which built guest tape/drum pair to boot")
++    parser.add_argument("--motion", action="store_true", help="Also exercise the hand-motion command")
++    args = parser.parse_args()
++    simh = args.simh.resolve()
++    if not simh.is_file():
++        parser.error("SIMH executable not found: " + str(simh))
++    for name in (args.prefix + ".rim", args.prefix + "-drum.img"):
++        if not (PROGRAM / name).is_file():
++            parser.error("Build the requested SHRDLU variant first; missing " + name)
++
++    # Reserve an otherwise free port; the simulator opens it immediately after release.
++    with socket.socket() as probe:
++        probe.bind(("127.0.0.1", 0))
++        port = probe.getsockname()[1]
++
++    cfg = f"""set cpu pdp1d48
++set cpu 64k
++set cpu nosbs
++set t340 enabled
++set clk enabled
++set drp enabled
++attach drp {PROGRAM / (args.prefix + '-drum.img')}
++set dcs enabled
++set dcs lines=1
++set dcsl0 8b
++attach dcs {port}
++attach ptr {PROGRAM / (args.prefix + '.rim')}
++boot ptr
++"""
++    with tempfile.TemporaryDirectory() as temp:
++        cfg_file = Path(temp) / "shrdlu-test.ini"
++        cfg_file.write_text(cfg)
++        with open(Path(temp) / "simh.log", "w+b") as log:
++            process = subprocess.Popen(
++                [str(simh), str(cfg_file)],
++                cwd=PROGRAM,
++                stdin=subprocess.DEVNULL,
++                stdout=log,
++                stderr=subprocess.STDOUT,
++                start_new_session=True,
++            )
++            sock = None
++            result = 1
++            try:
++                started = time.monotonic()
++                while time.monotonic() - started < args.timeout:
++                    if process.poll() is not None:
++                        raise AssertionError("SIMH exited before accepting a DCS connection")
++                    try:
++                        sock = socket.create_connection(("127.0.0.1", port), timeout=0.3)
++                        break
++                    except OSError:
++                        time.sleep(0.1)
++                if sock is None:
++                    raise AssertionError("SIMH did not listen on the DCS port")
++                sock.setblocking(False)
++                cases = [
++                    ("banner", b"\r", [b"SHRDLU: TYPE A SENTENCE", b"/STATUS, /RESET"]),
++                    ("dictionary", b"/WORD BLOCK\r\n", [b"BLOCK: NOUN NS"]),
++                    ("overlay command", b"/ROOM\r\n", [b"HEAP ", b"DATABASE ", b"DROPS "]),
++                    ("natural-language query", b"ARE THERE ANY BLOCKS?\r\n",
++                     [b"WORDS: ARE THERE ANY BLOCKS ?", b"YES, FIVE OF THEM:", b"THE BLUE ONE."]),
++                ]
++                if args.motion:
++                    cases.append(("hand movement", b"PICK UP A BIG RED BLOCK.\r\n",
++                                  [b"WORDS: PICK UP A BIG RED BLOCK .", b"OK.\n*\n"]))
++                for title, query, expected in cases:
++                    sock.sendall(query)
++                    response = read_until_mark(sock, args.timeout)
++                    missing = [s for s in expected if s not in response]
++                    if missing:
++                        raise AssertionError(f"{title} missing {missing!r}: {response[-750:]!r}")
++                    if title == "dictionary" and response.count(b"/WORD BLOCK") != 1:
++                        raise AssertionError("Type 630 and guest are both echoing input")
++                    print("PASS:", title)
++                result = 0
++            except Exception as exc:
++                print("FAIL:", exc, file=sys.stderr)
++            finally:
++                if sock is not None:
++                    sock.close()
++                try:
++                    os.killpg(process.pid, signal.SIGTERM)
++                except ProcessLookupError:
++                    pass
++                try:
++                    process.wait(timeout=3)
++                except subprocess.TimeoutExpired:
++                    os.killpg(process.pid, signal.SIGKILL)
++                    process.wait()
++                if result:
++                    log.seek(0)
++                    print("SIMH console tail:", repr(log.read()[-800:]), file=sys.stderr)
++            return result
++
++
++if __name__ == "__main__":
++    sys.exit(main())
